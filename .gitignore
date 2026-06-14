@@ -1,0 +1,13 @@
+# Global IDE Configurations
+.idea/
+.vscode/
+*.iml
+
+# Environment varibles
+.env
+
+# Backend build files
+api-server/target/
+**/target/
+*.class
+*.log
