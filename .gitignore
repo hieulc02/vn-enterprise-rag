@@ -1,9 +1,0 @@
-
-
-# Global IDE Configurations
-.idea/
-.vscode/
-*.iml
-
-# Environment varibles
-.env
