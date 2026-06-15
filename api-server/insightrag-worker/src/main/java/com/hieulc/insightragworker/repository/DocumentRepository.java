@@ -10,7 +10,6 @@ import org.springframework.stereotype.Repository;
 import java.util.Optional;
 import java.util.UUID;
 
-@Repository
 public interface DocumentRepository extends JpaRepository<Document, UUID>, DocumentCustomRepository {
 
 //    @Query(

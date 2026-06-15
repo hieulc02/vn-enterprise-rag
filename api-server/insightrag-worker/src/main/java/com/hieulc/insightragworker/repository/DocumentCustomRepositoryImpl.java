@@ -29,8 +29,8 @@ public class DocumentCustomRepositoryImpl implements DocumentCustomRepository {
                 """;
         return jdbcClient.sql(sql)
                 .param("id", document.getId())
-                .param("fileKey", document.getStatus())
-                .param("status", document.getStatus())
+                .param("fileKey", document.getFileKey())
+                .param("status", document.getStatus().name())
                 .param("hashContent", document.getHashContent())
                 .param("sequencer", document.getLatestSequencer())
                 .param("aclRole", document.getDocumentAclRole().name())
