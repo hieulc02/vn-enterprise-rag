@@ -59,18 +59,6 @@ public class Document {
     @Builder.Default
     private Set<Department> departments = new HashSet<>();
 
-    public void addDepartment(Department department){
-        if(department != null) {
-            this.departments.add(department);
-        }
-    }
-
-    public void removeDepartment(Department department) {
-        if(department != null) {
-            this.departments.remove(department);
-        }
-    }
-
 //    @PrePersist
 //    public void initializePrePersist(){
 //        this.createdAt = OffsetDateTime.now();
