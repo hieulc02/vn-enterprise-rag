@@ -3,6 +3,7 @@ package com.hieulc.insightragworker.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.hieulc.insightragworker.enums.S3EventName;
 import lombok.Data;
 
 import java.util.List;
@@ -20,15 +21,15 @@ public class S3EventPayload {
     @JsonProperty("Records")
     private List<Record> records;
 
-    public boolean isUploadEvent(){
-        return records != null && !records.isEmpty()
-                && records.getFirst().getEventName().startsWith("s3:ObjectCreated");
-    }
-
-    public boolean isDeleteEvent(){
-        return records != null && !records.isEmpty()
-                && records.getFirst().getEventName().startsWith("s3:ObjectCreated");
-    }
+//    public boolean isUploadEvent(){
+//        return records != null && !records.isEmpty()
+//                && records.getFirst().getEventName().startsWith("s3:ObjectCreated");
+//    }
+//
+//    public boolean isDeleteEvent(){
+//        return records != null && !records.isEmpty()
+//                && records.getFirst().getEventName().startsWith("s3:ObjectCreated");
+//    }
 
     public String getSequencer(){
         if(records != null && !records.isEmpty()){
@@ -76,7 +77,7 @@ public class S3EventPayload {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Record{
         @JsonProperty("eventName")
-        private String eventName;
+        private S3EventName eventName;
 
         @JsonProperty("s3")
         private S3 s3;
