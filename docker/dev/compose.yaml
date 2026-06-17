@@ -15,10 +15,12 @@ services:
      restart: unless-stopped
      volumes:
        - db-data:/var/lib/postgresql/data
-     environment:
-       - POSTGRES_DB=${POSTGRES_DB}
-       - POSTGRES_USER=${POSTGRES_USER}
-       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+     env_file:
+       - .env
+#     environment:
+#       - POSTGRES_DB=${POSTGRES_DB}
+#       - POSTGRES_USER=${POSTGRES_USER}
+#       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
      expose:
        - 5432
      ports:
@@ -32,10 +34,12 @@ services:
   rabbitmq:
     image: rabbitmq:4.3.0-management-alpine
     container_name: insightrag-local-rabbitmq
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
-      RABBITMQ_ERLANG_COOKIE: ${RABBITMQ_ERLANG_COOKIE}
+    env_file:
+      - .env
+#    environment:
+#      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+#      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+#      RABBITMQ_ERLANG_COOKIE: ${RABBITMQ_ERLANG_COOKIE}
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -57,9 +61,11 @@ services:
     ports:
       - "9000:9000"
       - "9001:9001"
+    env_file:
+      - .env
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+#      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+#      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
       MINIO_NOTIFY_AMQP_ENABLE_1: "on"
       MINIO_NOTIFY_AMQP_DURABLE_1: "on"
       MINIO_NOTIFY_AMQP_EXCHANGE_1: main.direct.exchange
@@ -78,14 +84,16 @@ services:
   minio-cli:
     image: minio/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1
     container_name: insightrag-local-minioinit
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    env_file:
+      - .env
+#    environment:
+#      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+#      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     depends_on:
       minio:
         condition: service_healthy
     volumes:
-      - ./script/minio-init.sh:/minio-init.sh #mount script to container's root folder
+      - ../../script/minio-init.sh:/minio-init.sh:ro #mount script to container's root folder
     entrypoint: ["/bin/sh", "/minio-init.sh"]
 
 volumes:
