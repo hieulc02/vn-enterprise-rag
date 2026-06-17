@@ -4,7 +4,10 @@
 *.iml
 
 # Environment varibles
-.env
+docker/dev/.env
+
+**/.env.*
+!**/.env.example
 
 # Backend build files
 api-server/target/
