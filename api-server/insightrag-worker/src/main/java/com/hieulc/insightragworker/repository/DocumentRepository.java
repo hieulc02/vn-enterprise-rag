@@ -2,10 +2,7 @@ package com.hieulc.insightragworker.repository;
 
 import com.hieulc.insightragworker.entity.Document;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -30,5 +27,5 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, Docum
 
     Optional<Document> findByHashContent(String hashContent);
 
-
+    <T> Optional<T> findByFileKey(String fileKey, Class<T> type);
 }
