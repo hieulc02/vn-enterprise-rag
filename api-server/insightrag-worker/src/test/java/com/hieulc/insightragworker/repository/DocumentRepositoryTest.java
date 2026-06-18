@@ -4,6 +4,7 @@ import com.hieulc.insightragworker.entity.Document;
 import com.hieulc.insightragworker.enums.DocumentAclRole;
 import com.hieulc.insightragworker.enums.DocumentClassification;
 import com.hieulc.insightragworker.enums.DocumentStatus;
+import com.hieulc.insightragworker.enums.DocumentTags;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -14,8 +15,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -79,6 +79,47 @@ class DocumentRepositoryTest {
 
         assertThat(upsertCheck).isEmpty();
     }
+
+    @Test
+    void shouldInsertOrIgnoreDocumentDepartmentAndReturnModifiedRows(){
+
+        String fileKey = "bucket/file4.pdf";
+        String sequencer = "17A9AB4FA93B36E2";
+
+        Document documentTest1 = createTestDocument(fileKey, sequencer);
+        documentRepository.upsertWithSequencerCheck(documentTest1);
+
+        List<String> departmentNames = Arrays.asList("IT", "ACCOUNTING", "HR");
+        int addedRows = documentRepository.addDepartmentsToDocument(documentTest1.getId(), departmentNames);
+
+        assertThat(addedRows).isEqualTo(3);
+
+        List<String> updatedDepartmentNames = Arrays.asList("THE_BOARD", "MARKETING", "IT", "ACCOUNTING");
+        int modifiedRows = documentRepository.addDepartmentsToDocument(documentTest1.getId(), updatedDepartmentNames);
+        assertThat(modifiedRows).isEqualTo(2);
+    }
+
+    @Test
+    void shouldRetainOrWipeUpDocumentDepartmentAndReturnRemovedRows(){
+        String fileKey = "bucket/file5.pdf";
+        String sequencer = "17A9AB4FA93B36E2";
+
+        Document documentTest1 = createTestDocument(fileKey, sequencer);
+        documentRepository.upsertWithSequencerCheck(documentTest1);
+
+        List<String> departmentNames = Arrays.asList("IT", "ACCOUNTING", "HR");
+        documentRepository.addDepartmentsToDocument(documentTest1.getId(), departmentNames);
+
+        List<String> removedDepartment = Arrays.asList("ACCOUNTING", "HR");
+        int removedRows = documentRepository.retainOnlyDocumentDepartments(documentTest1.getId(), removedDepartment);
+        assertThat(removedRows).isEqualTo(1);
+
+        List<String> emptyDepartment = Collections.emptyList();
+        int wipeRows = documentRepository.retainOnlyDocumentDepartments(documentTest1.getId(), emptyDepartment);
+        assertThat(wipeRows).isEqualTo(2);
+    }
+
+
 
     private Document createTestDocument(String fileKey, String sequencer){
         return Document.builder()
