@@ -62,8 +62,8 @@ public class DocumentCustomRepositoryImpl implements DocumentCustomRepository {
     }
 
     @Override
-    public int removeDepartmentsFromDocument(UUID documentId, List<String> departmentNames) {
-        if(departmentNames == null || departmentNames.isEmpty()){
+    public int retainOnlyDocumentDepartments(UUID documentId, List<String> departmentNamesToKeep) {
+        if(departmentNamesToKeep == null || departmentNamesToKeep.isEmpty()){
             String wipeSql = """
                     DELETE FROM worker_schema.document_departments WHERE document_id = :documentId
                     """;
@@ -85,7 +85,7 @@ public class DocumentCustomRepositoryImpl implements DocumentCustomRepository {
 
         return jdbcClient.sql(sql)
                 .param("documentId", documentId)
-                .param("departmentNames", departmentNames.toArray(new String[0]))
+                .param("departmentNames", departmentNamesToKeep.toArray(new String[0]))
                 .update();
     }
 }

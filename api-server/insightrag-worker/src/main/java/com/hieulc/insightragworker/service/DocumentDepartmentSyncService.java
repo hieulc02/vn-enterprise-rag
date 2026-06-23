@@ -24,7 +24,7 @@ public class DocumentDepartmentSyncService {
     void syncDocumentDepartments(String fileKey, List<String> departmentNames){
         UUID documentId = getDocumentID(fileKey);
 
-        int removedRows = documentRepository.removeDepartmentsFromDocument(documentId, departmentNames);
+        int removedRows = documentRepository.retainOnlyDocumentDepartments(documentId, departmentNames);
         log.debug("Removed {} obsolete departments for document {}", fileKey, removedRows);
 
         int upsertRows = documentRepository.addDepartmentsToDocument(documentId, departmentNames);
@@ -32,9 +32,9 @@ public class DocumentDepartmentSyncService {
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
-    void removeDocumentDepartments(String fileKey, List<String> departmentNames){
+    void retainDocumentDepartments(String fileKey, List<String> departmentNames){
         UUID documentId = getDocumentID(fileKey);
-        int removedRows = documentRepository.removeDepartmentsFromDocument(documentId, departmentNames);
+        int removedRows = documentRepository.retainOnlyDocumentDepartments(documentId, departmentNames);
 
         log.debug("{} departments of document {} has been removed", removedRows, fileKey);
     }

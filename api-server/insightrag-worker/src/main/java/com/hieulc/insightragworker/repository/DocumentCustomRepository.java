@@ -10,6 +10,6 @@ public interface DocumentCustomRepository {
     Optional<Boolean> upsertWithSequencerCheck(Document document);
 
     int addDepartmentsToDocument(UUID documentId, List<String> departmentNames);
-    int removeDepartmentsFromDocument(UUID documentId, List<String> departmentNames);
+    int retainOnlyDocumentDepartments(UUID documentId, List<String> departmentNames);
 
 }
