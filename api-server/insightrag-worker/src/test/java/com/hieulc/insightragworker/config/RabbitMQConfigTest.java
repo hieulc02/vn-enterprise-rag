@@ -1,43 +1,68 @@
 package com.hieulc.insightragworker.config;
 
-import com.hieulc.insightragworker.dto.S3EventPayload;
+import com.hieulc.insightragworker.exception.infra.StorageProviderException;
+import com.rabbitmq.client.Channel;
+import org.aopalliance.intercept.MethodInterceptor;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.rabbitmq.RabbitMQContainer;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.amqp.core.AmqpTemplate;
+import org.springframework.amqp.core.Message;
+import org.springframework.amqp.core.MessageProperties;
+import org.springframework.amqp.rabbit.retry.MessageRecoverer;
+import org.springframework.amqp.rabbit.retry.RepublishMessageRecoverer;
+import org.springframework.aop.framework.*;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.doThrow;
 
-@SpringBootTest
-@Testcontainers
+import static org.mockito.Mockito.*;
+
+
+@ExtendWith(MockitoExtension.class)
 class RabbitMQConfigTest {
 
-    @Container
-    static RabbitMQContainer rabbitMQ = new RabbitMQContainer("rabbitmq:4.3.0-alpine");
+    private final RabbitMQConfig rabbitMQConfig = new RabbitMQConfig();
 
-    @DynamicPropertySource
-    static void dynamicProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.rabbitmq.host", rabbitMQ::getHost);
-        registry.add("spring.rabbitmq.port", rabbitMQ::getAmqpPort);
-    }
-
-    @Autowired
-    private RabbitTemplate rabbitTemplate;
+    @Mock
+    private MessageRecoverer messageRecoverer;
 
     @Test
-    void givenMessagePayload_whenProcessingFails_thenMessageSentToDLQ(){
+    @DisplayName("Should retry 3 times when StorageProviderException is thrown")
+    void shouldRetry_whenRetryableExceptionThrown() throws Exception{
+        MethodInterceptor interceptor = rabbitMQConfig.retryOperationsInterceptor(messageRecoverer);
 
-        S3EventPayload s3EventPayload = new S3EventPayload();
-        s3EventPayload.setRootEventName("s3:ObjectCreated:Put");
+        TestListener test = mock(TestListener.class);
 
-        rabbitTemplate.convertAndSend(RabbitMQConfig.MAIN_EXCHANGE, RabbitMQConfig.MAIN_ROUTING_KEY, s3EventPayload);
+        Throwable rootCause = new RuntimeException("Connection time out");
 
-        assertThat(s3EventPayload.getRootEventName()).startsWith("s3:ObjectCreated");
+        doThrow(new StorageProviderException("MinIO is down!", rootCause))
+                .when(test).onMessage(any(Message.class), any(Channel.class));
+
+        ProxyFactory proxyFactory = new ProxyFactory(test);
+        proxyFactory.addAdvice(interceptor);
+        TestListener proxy = (TestListener) proxyFactory.getProxy();
+
+        Message message = mock(Message.class);
+        Channel channel = mock(Channel.class);
+
+        proxy.onMessage(message, channel);
+
+        verify(test, times(4)).onMessage(message, channel); //1 attempt, 3 retries, 4 in total
+    }
+
+    @Test
+    @DisplayName("Should send to DLQ after 3 retries when StorageProviderException is thrown")
+    void shouldSentToDLQ_whenRetryableExceptionThrown() throws Exception{
+        AmqpTemplate amqpTemplate = mock(AmqpTemplate.class);
+
+        RepublishMessageRecoverer recoverer = new RepublishMessageRecoverer(
+          amqpTemplate, RabbitMQConfig.DLX_EXCHANGE, RabbitMQConfig.DLX_ROUTING_KEY
+        );
+        Message message = new Message("Test payload".getBytes(), new MessageProperties());
+        Throwable cause = new RuntimeException("MinIO is down!");
+        recoverer.recover(message, cause);
+
+        verify(amqpTemplate, times(1)).send(eq(RabbitMQConfig.DLX_EXCHANGE), eq(RabbitMQConfig.DLX_ROUTING_KEY), any(Message.class));
     }
 }
