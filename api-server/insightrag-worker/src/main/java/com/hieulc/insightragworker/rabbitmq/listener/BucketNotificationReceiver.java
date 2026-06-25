@@ -1,12 +1,12 @@
 package com.hieulc.insightragworker.rabbitmq.listener;
 
-import com.hieulc.insightragworker.command.DocumentTaggingCommand;
-import com.hieulc.insightragworker.command.DocumentUploadCommand;
-import com.hieulc.insightragworker.command.handler.DocumentTaggingHandler;
-import com.hieulc.insightragworker.command.handler.DocumentUploadHandler;
-import com.hieulc.insightragworker.config.RabbitMQConfig;
-import com.hieulc.insightragworker.config.properties.DocumentValidationProperties;
+import com.hieulc.insightragworker.command.*;
+import com.hieulc.insightragworker.command.handler.*;
+import com.hieulc.insightragworker.config.*;
+import com.hieulc.insightragworker.config.properties.*;
 import com.hieulc.insightragworker.dto.S3EventPayload;
+import com.hieulc.insightragworker.exception.appli.DepartmentInvalidException;
+import com.hieulc.insightragworker.exception.infra.StorageProviderException;
 import com.hieulc.insightragworker.service.DocumentHashingService;
 import com.hieulc.insightragworker.validation.DocumentValidationService;
 import com.rabbitmq.client.Channel;
@@ -14,7 +14,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.support.AmqpHeaders;
-import org.springframework.messaging.Message;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Component;
@@ -40,36 +39,19 @@ public class BucketNotificationReceiver {
      *
      * @param payload convert payload event from S3 webhook
      */
-    @RabbitListener(queues = RabbitMQConfig.MAIN_QUEUE, ackMode = "MANUAL")
-    public void notificationHandler(
-            @Payload S3EventPayload payload,
-            Channel channel,
-            @Header(AmqpHeaders.DELIVERY_TAG) long tag) {
-
+    @RabbitListener(queues = RabbitMQConfig.MAIN_QUEUE, containerFactory = "rabbitListenerContainerFactory")
+    public void notificationHandler(@Payload S3EventPayload payload) {
         log.info("Received MinIO event {} for document {}", payload.getRootEventName(), payload.getObjectKey());
 
-        try {
-            for (S3EventPayload.Record record : payload.getRecords()) {
-                switch (record.getEventName()) {
-                    case DOCUMENT_UPLOADED ->
-                            processUploadEvent(payload);
-                    case TAGS_MODIFIED ->
-                            processTaggingEvent(payload);
-                    case DOCUMENT_DELETED ->
-                            processDeleteEvent(payload);
-                    case UNSUPPORTED_EVENT ->
-                            log.warn("Ignoring unsupported S3 storage event for key: {}", payload.getObjectKey());
-                }
-                channel.basicAck(tag, false);
+        for (S3EventPayload.Record record : payload.getRecords()) {
+            switch (record.getEventName()) {
+                case DOCUMENT_UPLOADED -> processUploadEvent(payload);
+                case TAGS_MODIFIED -> processTaggingEvent(payload);
+                case DOCUMENT_DELETED -> processDeleteEvent(payload);
+                case UNSUPPORTED_EVENT ->
+                        log.warn("Ignoring unsupported S3 storage event for key: {}", payload.getObjectKey());
             }
-
-        } catch (IllegalArgumentException e){
-            log.error("Validation payload failed for key: {}. Message rejected", payload.getObjectKey(), e);
-            handleRequeue(channel, tag);
-        } catch (Exception e) {
-            handleRequeue(channel, tag);
         }
-
     }
 
     private void processUploadEvent(S3EventPayload payload) {
@@ -116,11 +98,4 @@ public class BucketNotificationReceiver {
 
     }
 
-    private void handleRequeue(Channel channel, Long tag){
-        try {
-           channel.basicNack(tag, false, false);
-        } catch (IOException ex) {
-//            log.error("Exception handle");
-        }
-    }
 }
