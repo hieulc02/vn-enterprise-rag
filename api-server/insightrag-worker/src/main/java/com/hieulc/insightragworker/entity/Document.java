@@ -20,7 +20,9 @@ import java.util.*;
 public class Document {
 
     @Id
-    @EqualsAndHashCode.Include private UUID id;
+    @EqualsAndHashCode.Include
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private UUID id;
 
     @Column(name = "file_key", nullable = false, unique = true)
     private String fileKey;
