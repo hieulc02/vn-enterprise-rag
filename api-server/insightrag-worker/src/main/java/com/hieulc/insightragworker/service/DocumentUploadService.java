@@ -2,15 +2,18 @@ package com.hieulc.insightragworker.service;
 
 import com.hieulc.insightragworker.command.DocumentUploadCommand;
 import com.hieulc.insightragworker.command.handler.DocumentUploadHandler;
+import com.hieulc.insightragworker.dto.DocumentOutboxPayload;
 import com.hieulc.insightragworker.entity.Document;
-import com.hieulc.insightragworker.enums.DocumentAclRole;
-import com.hieulc.insightragworker.enums.DocumentClassification;
-import com.hieulc.insightragworker.enums.DocumentStatus;
+import com.hieulc.insightragworker.entity.DocumentOutbox;
+import com.hieulc.insightragworker.enums.*;
+import com.hieulc.insightragworker.repository.DocumentOutboxRepository;
 import com.hieulc.insightragworker.repository.DocumentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -19,31 +22,15 @@ import java.util.UUID;
 public class DocumentUploadService implements DocumentUploadHandler {
 
     private final DocumentRepository documentRepository;
+    private final DocumentOutboxRepository documentOutboxRepository;
 
     @Override
+    @Transactional
     public void handle(DocumentUploadCommand command) {
-
-        if(processStaleEvent(command)){
-            log.info("Event sequencer {} of file {} is stale" ,command.sequenceId(), command.fileKey());
-            return;
-        }
-
-
-
-    }
-
-    /**
-     * In a concurrent environment, this check the event's sequencer against database to prevent
-     * out-of-order event processing from overriding newer data
-     * @param command the payload command from MinIO bucket notifications
-     * @return
-     * {@code true} if the event is successfully upserted, {@code false} if the event is stale
-     */
-    private boolean processStaleEvent(DocumentUploadCommand command){
 
         DocumentAclRole documentAclRole = DocumentAclRole.fromBucketName(command.bucketName());
 
-        Document tombstoneDocument = Document.builder()
+        Document document = Document.builder()
                 .id(UUID.randomUUID())
                 .fileKey(command.fileKey())
                 .status(DocumentStatus.ACTIVE)
@@ -53,8 +40,33 @@ public class DocumentUploadService implements DocumentUploadHandler {
                 .type(DocumentClassification.fromAclRole(documentAclRole))
                 .build();
 
-        int upsertRows = documentRepository.upsertWithSequencerCheck(tombstoneDocument);
+        log.debug("Event sequencer of file key {}: {}", command.fileKey(), command.sequenceId());
+        Optional<Boolean> upsertRows = documentRepository.upsertWithSequencerCheck(document);
 
-        return (upsertRows == 0);
+        if(upsertRows.isEmpty()){
+            log.info("Event sequencer {} of file {} is already stale", command.sequenceId(), command.fileKey());
+            return;
+        }
+
+        boolean isNewDocument = upsertRows.get();
+
+        DocumentOutbox outboxEvent =
+                DocumentOutbox.builder()
+                        .aggregateType(AggregateType.DOCUMENT)
+                        .aggregateId(document.getId().toString())
+                        .eventType(EventType.isNewOrUpdated(isNewDocument))
+                        .payload(newPayload(command))
+                        .build();
+
+        documentOutboxRepository.save(outboxEvent);
+
+        //only for CDC to catch, prevent WAL bloats
+        documentOutboxRepository.delete(outboxEvent);
+
     }
+
+    private DocumentOutboxPayload newPayload(DocumentUploadCommand command){
+        return new DocumentOutboxPayload(command.fileKey(), command.bucketName());
+    }
+
 }
