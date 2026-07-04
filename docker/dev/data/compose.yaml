@@ -1,0 +1,95 @@
+services:
+
+  broker:
+    image: confluentinc/cp-kafka:8.2.2
+    container_name: insightrag-kafka
+    hostname: kafka
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    ports:
+      - "9092:9092"
+    networks:
+      - insightrag_net
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
+
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT_HOST://localhost:9092,PLAINTEXT://kafka:29093'
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:29093'
+      KAFKA_LISTENERS: 'CONTROLLER://:29093,PLAINTEXT_HOST://:9092,PLAINTEXT://:19092'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      CLUSTER_ID: '4L6g3nShT-eMCtK--X86sw'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+      KAFKA_HEAP_OPTS: "-Xmx256M -Xms256M"
+
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+
+      KAFKA_SHARE_COORDINATOR_STATE_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_SHARE_COORDINATOR_STATE_TOPIC_MIN_ISR: 1
+
+  postgres-db:
+    image: pgvector/pgvector:pg16
+    container_name: insightrag-db
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    volumes:
+      - /data/config/cdc.conf:/etc/postgresql/conf.d/cdc.conf
+      - /data/init-db:/docker-entrypoint-initdb.d
+      - db-data:/var/lib/postgresql/data
+    expose:
+      - 5432
+    networks:
+      - insightrag_net
+    ports:
+      - "5432:5432"
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=logical"
+      - "-c"
+      - "max_wal_senders=1"
+      - "-c"
+      - "max_replication_slots=1"
+      - "-c"
+      - "wal_sender_timeout=120000"
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "${POSTGRES_USER:-insightrag}", "-d", "${POSTGRES_DB:-insightrag_db}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+#  debezium-connect:
+#    image: quay.io/debezium/connect:3.4.3.Final
+#    container_name: insightrag-debezium
+#    restart: unless-stopped
+#    ports:
+#      - "8083:8083"
+#    depends_on:
+#      - postgres-db
+#      - kafka
+#    networks:
+#      - insightrag_net
+#    environment:
+#      BOOTSTRAP_SERVERS: 'kafka:19092'
+#      GROUP_ID: 'insightrag-connect-cluster'
+#      CONFIG_STORAGE_TOPIC: 'insightrag-connect-configs'
+#      OFFSET_STORAGE_TOPIC: 'insightrag-connect-offsets'
+#      STATUS_STORAGE_TOPIC: 'insightrag-connect-status'
+#      KEY_CONVERTER: 'org.apache.kafka.connect.json.JsonConverter'
+#      VALUE_CONVERTER: 'org.apache.kafka.connect.json.JsonConverter'
+
+
+volumes:
+  db-data:
+
+
+
+
+

@@ -1,0 +1,66 @@
+services:
+
+  rabbitmq:
+    image: rabbitmq:4.3.0-management-alpine
+    container_name: insightrag-local-rabbitmq
+    hostname: insightrag-rabbitmq
+    env_file:
+      - ../.env
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - insightrag_net
+    healthcheck:
+      test: [ "CMD-SHELL", "test -f /var/lib/rabbitmq/.erlang.cookie && rabbitmq-diagnostics -q ping || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  minio:
+    image: pgsty/minio
+    container_name: insightrag-local-minio
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    env_file:
+      - ../.env
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    networks:
+      - insightrag_net
+    environment:
+      MINIO_NOTIFY_AMQP_ENABLE_1: "on"
+      MINIO_NOTIFY_AMQP_DURABLE_1: "on"
+      MINIO_NOTIFY_AMQP_EXCHANGE_1: main.direct.exchange
+      MINIO_NOTIFY_AMQP_EXCHANGE_TYPE_1: direct
+      MINIO_NOTIFY_AMQP_ROUTING_KEY_1: worker.process
+      MINIO_NOTIFY_AMQP_URL_1: "amqp://rabbitmq:rabbitmq@rabbitmq:5672"
+    volumes:
+      - minio_storage:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+
+  minio-cli:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1
+    container_name: insightrag-local-minioinit
+    networks:
+      - insightrag_net
+    depends_on:
+      minio:
+        condition: service_healthy
+    volumes:
+      - ./scripts/minio-init.sh:/minio-init.sh:ro #mount script to container's root folder
+    entrypoint: [ "/bin/sh", "/minio-init.sh" ]
+
+volumes:
+  minio_storage:
+  rabbitmq-data:
