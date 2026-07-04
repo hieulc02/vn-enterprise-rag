@@ -1,10 +1,7 @@
 package com.hieulc.insightragworker.repository;
 
 import com.hieulc.insightragworker.entity.Document;
-import com.hieulc.insightragworker.enums.DocumentAclRole;
-import com.hieulc.insightragworker.enums.DocumentClassification;
-import com.hieulc.insightragworker.enums.DocumentStatus;
-import com.hieulc.insightragworker.enums.DocumentTags;
+import com.hieulc.insightragworker.enums.*;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
