@@ -1,0 +1,36 @@
+[project]
+name = "doc-worker"
+version = "0.1.0"
+description = "Python worker for document processing"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "confluent-kafka==2.14.2",
+    "docling>=2.110.0",
+    "minio",
+    "pydantic-settings",
+    "pymupdf",
+    "llama-cloud>=2.1",
+    "orjson>=3.10,<4.0",
+    "google-genai>=2.9.0",
+    "langchain-text-splitters>=1.1.2",
+    "protobuf>=7.35.1",
+    "sentencepiece",
+    "numpy>=2.5.1",
+    "pytest>=9.1.1",
+    "rapidocr-onnxruntime>=1.4.4",
+    "easyocr>=1.7.2",
+    "rapidfuzz>=3.14.5",
+    "aiofiles>=25.1.0",
+    "babel>=2.18.0",
+    "unidecode>=1.4.0",
+    "sentence-transformers>=5.7.0",
+    "faker>=40.28.1",
+    "pytest-asyncio>=1.4.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = [
+  "app"
+]
+testpaths = ["tests"]
