@@ -1,6 +1,5 @@
 package com.hieulc.insightragworker.config;
 
-import org.springframework.boot.context.properties.bind.Name;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.TaskExecutor;
@@ -12,7 +11,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 public class ThreadPoolConfig {
 
     @Bean(name = "debeziumThreadExecutor")
-    public TaskExecutor debeziumThreadExecutor(){
+    public TaskExecutor debeziumThreadExecutor() {
         ThreadPoolTaskExecutor taskExecutor = new ThreadPoolTaskExecutor();
 
         taskExecutor.setCorePoolSize(1);
