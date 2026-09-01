@@ -1,0 +1,18 @@
+# Ide workspace
+.vscode/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[codz]
+*$py.class
+
+
+# Environments
+.env
+.venv
+
+# Distribution / packaging
+.Python
+
+
+cache/
