@@ -4,7 +4,8 @@ public record DocumentUploadCommand(
         String fileKey,
         String sequenceId,
         String hashContent,
-        String bucketName
+        String bucketName,
+        String contentType
 ) {
     public DocumentUploadCommand {
         if(fileKey == null || fileKey.isBlank()){

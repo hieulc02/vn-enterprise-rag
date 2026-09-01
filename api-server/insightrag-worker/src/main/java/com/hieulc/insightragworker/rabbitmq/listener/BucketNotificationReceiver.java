@@ -79,7 +79,8 @@ public class BucketNotificationReceiver {
                         payload.getObjectKey(),
                         payload.getSequencer(),
                         hashContent,
-                        payload.getBucketName())
+                        payload.getBucketName(),
+                        payload.getContentType())
         );
     }
 

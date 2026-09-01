@@ -66,7 +66,7 @@ public class DocumentUploadService implements DocumentUploadHandler {
     }
 
     private DocumentOutboxPayload newPayload(DocumentUploadCommand command){
-        return new DocumentOutboxPayload(command.fileKey(), command.bucketName());
+        return new DocumentOutboxPayload(command.fileKey(), command.bucketName(), command.contentType());
     }
 
 }
