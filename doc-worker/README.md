@@ -51,7 +51,7 @@ graph LR
     K_OUT --> J[Java: Knowledge Graph Module]
 
     %% Styling
-    classDef storage fill:#083049,stroke:#333,stroke-width:2px,color:#fff;
+    classDef storage fill:#0b5394,stroke:#333,stroke-width:2px,color:#fff;
     class DEL,S_CHUNK,S_FINAL storage;
 ```
 
