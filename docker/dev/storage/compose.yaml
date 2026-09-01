@@ -58,7 +58,7 @@ services:
       minio:
         condition: service_healthy
     volumes:
-      - ./scripts/minio-init.sh:/minio-init.sh:ro #mount script to container's root folder
+      - ../scripts/minio-init.sh:/minio-init.sh:ro #mount script to container's root folder
     entrypoint: [ "/bin/sh", "/minio-init.sh" ]
 
 volumes:
