@@ -1,7 +1,8 @@
 package com.hieulc.insightragworker.kafka.producer;
 
-import com.hieulc.insightragworker.config.KafkaConfig;
+import com.hieulc.insightragworker.config.properties.KafkaTopicsProperties;
 import com.hieulc.insightragworker.dto.OutboxEvent;
+import com.hieulc.insightragworker.dto.PublishResult;
 import com.hieulc.insightragworker.enums.AggregateType;
 import com.hieulc.insightragworker.enums.EventType;
 import com.hieulc.insightragworker.port.OutboxEventPublisher;
@@ -28,9 +29,9 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-
 import java.util.Collections;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
@@ -45,26 +46,33 @@ class KafkaOutboxPublisherTestIT {
     final private ObjectMapper objectMapper = new ObjectMapper();
     private KafkaTemplate<String, String> kafkaTemplate;
     private OutboxEventPublisher outboxEventPublisher;
+    private KafkaTopicsProperties properties;
 
     @BeforeEach
     void setup() throws InterruptedException, ExecutionException {
         String broker = kafka.getBootstrapServers();
 
+        properties = new KafkaTopicsProperties(
+                "rag.cdc.topic",
+                "rag.dlq.topic",
+                "rag.debezium.offset.topic"
+        );
+
         try (AdminClient adminClient = AdminClient.create(Map.of(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, broker))) {
             adminClient.createTopics(Collections.singletonList(
-                            new NewTopic(KafkaConfig.OUTBOX_TOPIC, 3, (short) 1)
-                    )).all().get();
+                    new NewTopic(properties.outboxEvent(), 3, (short) 1)
+            )).all().get();
         }
 
         DefaultKafkaProducerFactory<String, String> producer = createProducer(broker);
 
         kafkaTemplate = new KafkaTemplate<>(producer, true);
 
-        outboxEventPublisher = new KafkaOutboxPublisher(objectMapper, kafkaTemplate);
+        outboxEventPublisher = new KafkaOutboxPublisher(objectMapper, kafkaTemplate, properties);
     }
 
     @Test
-    @DisplayName("Kafka should receive and send the valid Outbox Event Json")
+    @DisplayName("Kafka should receive and send the valid Outbox Event Json and the correct offset")
     void shouldReceiveValidOutboxEventJson() {
 
         String eventId = "26e6779f-f108-4a1c-831d-f1c8de56afa5";
@@ -87,21 +95,23 @@ class KafkaOutboxPublisherTestIT {
         String broker = kafka.getBootstrapServers();
 
         Consumer<String, String> consumer = createConsumer(brokerGroup, broker);
-        consumer.subscribe(Collections.singletonList(KafkaConfig.OUTBOX_TOPIC));
+        consumer.subscribe(Collections.singletonList(properties.outboxEvent()));
 
-        outboxEventPublisher.publish(createOutboxEvent(eventId, aggregateId, data));
+        CompletableFuture<PublishResult> completableFuture = outboxEventPublisher.publish(createOutboxEvent(eventId, aggregateId, data));
+        PublishResult result = completableFuture.join();
 
-        ConsumerRecord<String, String> receivedRecord = KafkaTestUtils.getSingleRecord(consumer, KafkaConfig.OUTBOX_TOPIC);
+        ConsumerRecord<String, String> receivedRecord = KafkaTestUtils.getSingleRecord(consumer, properties.outboxEvent());
 
         JsonNode actualNode = objectMapper.readTree(receivedRecord.value());
         JsonNode expectedNode = objectMapper.readTree(expectedJson);
 
         assertThat(actualNode).isEqualTo(expectedNode);
+        assertThat(result.messageId()).isEqualTo("0");
 
         consumer.close();
     }
 
-    private OutboxEvent createOutboxEvent(String eventId, String aggregateId, String data){
+    private OutboxEvent createOutboxEvent(String eventId, String aggregateId, String data) {
         return new OutboxEvent(
                 eventId,
                 AggregateType.DOCUMENT.toString(),
@@ -110,7 +120,7 @@ class KafkaOutboxPublisherTestIT {
                 data);
     }
 
-    private Consumer<String, String> createConsumer(String brokerGroup, String broker){
+    private Consumer<String, String> createConsumer(String brokerGroup, String broker) {
         Map<String, Object> config = KafkaTestUtils.consumerProps(broker, brokerGroup, true);
         //KafkaTestUtils does not support the StringDeserializer consumer key so we must override it to suit our case
         config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
@@ -120,7 +130,7 @@ class KafkaOutboxPublisherTestIT {
         return consumerConfig.createConsumer();
     }
 
-    private DefaultKafkaProducerFactory<String, String> createProducer(String broker){
+    private DefaultKafkaProducerFactory<String, String> createProducer(String broker) {
         Map<String, Object> config = KafkaTestUtils.producerProps(broker);
         //KafkaTestUtils does not support the StringSerializer producer key so we must override it to suit our case
         config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);

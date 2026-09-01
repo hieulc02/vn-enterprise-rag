@@ -1,10 +1,10 @@
 package com.hieulc.insightragworker.port;
 
 import com.hieulc.insightragworker.dto.OutboxEvent;
-import org.springframework.kafka.support.SendResult;
+import com.hieulc.insightragworker.dto.PublishResult;
 
 import java.util.concurrent.CompletableFuture;
 
 public interface OutboxEventPublisher {
-    CompletableFuture<SendResult<String, String>> publish(OutboxEvent outboxEvent);
+    CompletableFuture<PublishResult> publish(OutboxEvent outboxEvent);
 }

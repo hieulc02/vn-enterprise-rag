@@ -1,11 +1,11 @@
 package com.hieulc.insightragworker.kafka.producer;
 
-import com.hieulc.insightragworker.config.KafkaConfig;
+import com.hieulc.insightragworker.config.properties.KafkaTopicsProperties;
 import com.hieulc.insightragworker.dto.OutboxEvent;
+import com.hieulc.insightragworker.dto.PublishResult;
 import com.hieulc.insightragworker.port.OutboxEventPublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.kafka.support.SendResult;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -21,11 +21,17 @@ public class KafkaOutboxPublisher implements OutboxEventPublisher {
     private final ObjectMapper objectMapper;
 
     private final KafkaTemplate<String, String> kafkaTemplate;
+    private final KafkaTopicsProperties topicsProperties;
 
     @Override
-    public CompletableFuture<SendResult<String, String>> publish(OutboxEvent outboxEvent) {
+    public CompletableFuture<PublishResult> publish(OutboxEvent outboxEvent) {
         try {
-            return kafkaTemplate.send(KafkaConfig.OUTBOX_TOPIC, outboxEvent.aggregateId(), mapOutboxEventToJson(outboxEvent));
+            return kafkaTemplate.send(
+                    topicsProperties.outboxEvent(),
+                    outboxEvent.aggregateId(),
+                    mapOutboxEventToJson(outboxEvent))
+                    .thenApply(sendResult->
+                            new PublishResult(String.valueOf(sendResult.getRecordMetadata().offset()), topicsProperties.outboxEvent()));
         } catch (Exception e) {
             return CompletableFuture.failedFuture(e);
         }

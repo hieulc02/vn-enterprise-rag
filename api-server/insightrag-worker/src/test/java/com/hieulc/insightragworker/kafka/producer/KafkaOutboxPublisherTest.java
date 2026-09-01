@@ -1,9 +1,12 @@
 package com.hieulc.insightragworker.kafka.producer;
 
-import com.hieulc.insightragworker.config.KafkaConfig;
+import com.hieulc.insightragworker.config.properties.KafkaTopicsProperties;
 import com.hieulc.insightragworker.dto.OutboxEvent;
+import com.hieulc.insightragworker.dto.PublishResult;
 import com.hieulc.insightragworker.enums.AggregateType;
 import com.hieulc.insightragworker.enums.EventType;
+import com.hieulc.insightragworker.port.OutboxEventPublisher;
+import org.apache.kafka.clients.producer.RecordMetadata;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -30,21 +33,29 @@ class KafkaOutboxPublisherTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Mock
-    KafkaTemplate<String, String> kafkaTemplate;
+    private KafkaTemplate<String, String> kafkaTemplate;
 
     @Captor
     private ArgumentCaptor<String> messageCaptor;
 
-    KafkaOutboxPublisher publisher;
+    private OutboxEventPublisher publisher;
+    private KafkaTopicsProperties kafkaTopicsProperties;
 
     @BeforeEach
     void setUp(){
-        publisher = new KafkaOutboxPublisher(objectMapper, kafkaTemplate);
+
+        kafkaTopicsProperties = new KafkaTopicsProperties(
+                "rag.cdc.topic",
+                "rag.dlq.topic",
+                "rag.debezium.offset.topic"
+        );
+
+        publisher = new KafkaOutboxPublisher(objectMapper, kafkaTemplate, kafkaTopicsProperties);
     }
 
     @Test
-    @DisplayName("Verify if the event payload is sent to Kafka is valid and it only sends one time")
-    void shouldPublishToKafkaOneTime_WithValidJsonPayload(){
+    @DisplayName("Verify if the event payload and offSet sent to Kafka is correct and it only sends one time")
+    void shouldPublishToKafkaOneTime_WithValidJsonPayload_AndReturnCorrectOffset(){
 
         String eventId = "26e6779f-f108-4a1c-831d-f1c8de56afa5";
         String aggregateId = "12345678-1234-5678-1234-567812345678";
@@ -62,14 +73,22 @@ class KafkaOutboxPublisherTest {
                 }
                 """;
 
+
+        SendResult<String, String> mockSendResult = mock(SendResult.class);
+        RecordMetadata mockRecordMetadata = mock(RecordMetadata.class);
+
+        when(mockSendResult.getRecordMetadata()).thenReturn(mockRecordMetadata);
+        when(mockRecordMetadata.offset()).thenReturn(100L);
+
         //stubbing the mock
-       CompletableFuture<SendResult<String, String>> dummyFuture = CompletableFuture.completedFuture(null);
-       when(kafkaTemplate.send(eq(KafkaConfig.OUTBOX_TOPIC), eq(aggregateId), messageCaptor.capture()))
+       CompletableFuture<SendResult<String, String>> dummyFuture = CompletableFuture.completedFuture(mockSendResult);
+       when(kafkaTemplate.send(eq(kafkaTopicsProperties.outboxEvent()), eq(aggregateId), anyString()))
                .thenReturn(dummyFuture);
 
-       publisher.publish(createOutboxEvent(eventId, aggregateId, data));
+       CompletableFuture<PublishResult> completableFuture = publisher.publish(createOutboxEvent(eventId, aggregateId, data));
+       PublishResult publishResult = completableFuture.join();
 
-       verify(kafkaTemplate).send(eq(KafkaConfig.OUTBOX_TOPIC), eq(aggregateId), messageCaptor.capture());
+       verify(kafkaTemplate).send(eq(kafkaTopicsProperties.outboxEvent()), eq(aggregateId), messageCaptor.capture());
 
        String jsonPayload = messageCaptor.getValue();
 
@@ -77,6 +96,7 @@ class KafkaOutboxPublisherTest {
        JsonNode expectedNode = objectMapper.readTree(expectedJson);
 
        assertThat(actualNode).isEqualTo(expectedNode);
+       assertThat(publishResult.messageId()).isEqualTo("100");
 
     }
 
@@ -93,7 +113,7 @@ class KafkaOutboxPublisherTest {
         when(kafkaTemplate.send(any(),any(), any()))
                 .thenThrow(new RuntimeException(exceptionMessage));
 
-        CompletableFuture<SendResult<String, String>> result = publisher.publish(createOutboxEvent(eventId, aggregateId, data));
+        CompletableFuture<PublishResult> result = publisher.publish(createOutboxEvent(eventId, aggregateId, data));
 
         assertThat(result).isCompletedExceptionally()
                 .failsWithin(Duration.ofSeconds(1))
@@ -116,7 +136,7 @@ class KafkaOutboxPublisherTest {
         when(kafkaTemplate.send(any(),any(), any()))
                 .thenReturn(CompletableFuture.failedFuture(new RuntimeException(exceptionMessage)));
 
-        CompletableFuture<SendResult<String, String>> result =
+        CompletableFuture<PublishResult> result =
                 publisher.publish(createOutboxEvent(eventId, aggregateId, data));
 
         assertThat(result).isCompletedExceptionally()
