@@ -3,7 +3,7 @@ import tempfile
 import mimetypes
 
 
-from confluent_kafka.aio import AIOProducer
+from aiokafka import AIOKafkaProducer
 
 from pipeline.ingest import IngestionPipeline
 from pipeline.resolution import EntityResolutionPipeline
@@ -56,11 +56,12 @@ def _buid_response_message(
 
 async def process_document(
     message: Message,
+    message_key: str,
     notification_topic: str,
     ingestion: IngestionPipeline,
     resolution: EntityResolutionPipeline,
     storage: StorageBase,
-    producer: AIOProducer,
+    producer: AIOKafkaProducer,
 ) -> bool:
 
     bucket, file_key, file_path = _extract_file_data(message)
@@ -86,18 +87,17 @@ async def process_document(
         )
 
         response = _buid_response_message(
-            correlation_id=message.id,
+            correlation_id=message_key,
             file_key=graph_file_key,
             bucket=bucket,
             aggregate_type=message.aggregate_type,
         )
 
-        delivery_future = await producer.produce(
+        await producer.send_and_wait(
             topic=notification_topic,
             value=response.model_dump_json().encode("utf-8"),
             key=file_key.encode("utf-8"),
         )
-        await delivery_future
 
         return True
     except Exception as e:

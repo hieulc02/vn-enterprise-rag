@@ -49,7 +49,9 @@ class IngestionPipeline:
             try:
                 raw_chunks = await self.storage.load_file(bucket, chunk_cache_key)
                 chunk_adapter = TypeAdapter(list[DocumentChunk])
-                chunks = chunk_adapter.validate_python(raw_chunks)
+                chunks = await asyncio.to_thread(
+                    chunk_adapter.validate_python, raw_chunks
+                )
             except Exception as e:
                 logger.error(f"Failed to load from cache. Re-process document: {e}")
                 chunks = await self._chunk_document(
@@ -64,10 +66,16 @@ class IngestionPipeline:
 
         doc_extraction_key = build_filename_with_prefix_folder("extractions", file_key)
         if not await self.storage.exists(bucket, doc_extraction_key):
+            dumped_extractions = await asyncio.to_thread(
+                lambda: [
+                    extraction.model_dump(mode="json")
+                    for extraction in extracted_chunks
+                ]
+            )
             await self.storage.save_file(
                 bucket,
                 doc_extraction_key,
-                [extraction.model_dump(mode="json") for extraction in extracted_chunks],
+                dumped_extractions,
             )
 
         return extracted_chunks, chunks
@@ -83,9 +91,11 @@ class IngestionPipeline:
         )
 
         await self._embed_document(chunks)
-        await self.storage.save_file(
-            bucket, chunk_cache_key, [c.model_dump(mode="json") for c in chunks]
+        dumped_chunk = await asyncio.to_thread(
+            lambda: [chunk.model_dump(mode="json") for chunk in chunks]
         )
+
+        await self.storage.save_file(bucket, chunk_cache_key, dumped_chunk)
 
         return chunks
 

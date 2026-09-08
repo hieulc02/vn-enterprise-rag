@@ -27,6 +27,7 @@ dependencies = [
     "sentence-transformers>=5.7.0",
     "faker>=40.28.1",
     "pytest-asyncio>=1.4.0",
+    "aiokafka>=0.14.0",
 ]
 
 [tool.pytest.ini_options]

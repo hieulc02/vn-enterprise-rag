@@ -1,113 +1,58 @@
 import logging
-import asyncio
-
-from concurrent.futures import ThreadPoolExecutor, Future
 
 from pydantic import ValidationError
-from confluent_kafka import (
-    Consumer,
-    KafkaException,
-    KafkaError,
-    Message as KafkaMessage,
-)
+
+from aiokafka import AIOKafkaConsumer
 from config.config import AppSettings
 from models.broker import Message
 
 logger = logging.getLogger(__name__)
 
 
-class KafkaConsumer:
+class AsyncKafkaConsumer:
 
     def __init__(self, config: AppSettings):
-        self.consumer = Consumer(
-            {
-                "bootstrap.servers": config.kafka.KAFKA_BROKER,
-                "group.id": config.kafka.KAFKA_CONSUMER_GROUP,
-                "auto.offset.reset": "earliest",
-                "enable.auto.offset.store": False,
-            }
+        self.consumer = AIOKafkaConsumer(
+            config.kafka.KAFKA_CONSUMER_TOPIC,
+            bootstrap_servers=config.kafka.KAFKA_BROKER,
+            group_id=config.kafka.KAFKA_CONSUMER_GROUP,
+            auto_offset_reset="earliest",
+            enable_auto_commit=False,
         )
-        self.executor = ThreadPoolExecutor(max_workers=1)
 
-    def consume_messages(self, topic, async_callback):
-        self.consumer.subscribe([topic])
+    async def start(self):
+        await self.consumer.start()
 
-        future: Future | None = None
-        curr_msg: KafkaMessage | None = None
+    async def stop(self):
+        if self.consumer:
+            await self.consumer.stop()
 
-        logger.info(f"Starting consumer loop for topic: {topic}")
+    async def consume_messages(self, async_callback):
+        logger.info(f"Starting async consumer loop...")
 
-        def thread_bridge(message):
-            return asyncio.run(async_callback(message))
+        async for msg in self.consumer:
+            try:
+                payload = msg.value.decode("utf-8")
+                message_key = msg.key.decode("utf-8")
+                message = Message.model_validate_json(payload)
 
-        is_running: bool = True
-        try:
-            while is_running:
-                msg = self.consumer.poll(1.0)
+                logger.info(f"Kafka pulled payload id: {message.id}")
 
-                if future is not None and future.done():
-                    try:
-                        success = future.result()
-                        if success:
-                            self.consumer.store_offsets(curr_msg)
-                            self.consumer.commit(message=curr_msg, asynchronous=False)
-                            logger.info(f"Committed offset for {curr_msg.offset()}")
-                        else:
-                            logger.error(
-                                f"Processing failed for offset {curr_msg.offset()}"
-                            )
-                            self.consumer.store_offsets(curr_msg)
-                            self.consumer.commit(message=curr_msg, asynchronous=False)
-
-                    except Exception as e:
-                        logger.exception(f"Worker thread crashed fatally: {e}")
-                        is_running = False
-                        continue
-
-                    future = None
-                    curr_msg = None
-
-                    active_partitions = self.consumer.assignment()
-                    self.consumer.resume(active_partitions)
-                    logger.debug(f"Resume Kafka partitions {active_partitions}")
-
-                if msg is None:
-                    continue
-
-                if msg.error():
-                    if msg.error().code() == KafkaError._PARTITION_EOF:
-                        continue
-
-                    logger.error(f"Consumer error: {msg.error()}")
-                    raise KafkaException(msg.error())
-
-                if future is not None:
-                    continue
-
-                try:
-                    message = Message.model_validate_json(msg.value())
-
+                success = await async_callback(message, message_key)
+                if success:
+                    await self.consumer.commit()
                     logger.info(
-                        f"Kafka pulled payload id: {message.id}. Offloading to worker thread"
+                        f"Committed offset {msg.offset} for partition {msg.partition}"
                     )
-
-                    paused_partitions = self.consumer.assignment()
-                    self.consumer.pause(paused_partitions)
-                    curr_msg = msg
-                    future = self.executor.submit(thread_bridge, message)
-
-                except (ValueError, ValidationError, TypeError) as e:
+                else:
                     logger.error(
-                        f"Failed to decode message: {msg.value().decode('utf-8')}"
+                        f"Processing failed for offset {msg.offset} in partition {msg.partition}"
                     )
-                    self.consumer.store_offsets(msg)
-                    self.consumer.commit(message=msg, asynchronous=False)
-                except Exception as e:
-                    logger.exception(f"Unexpected error occurred: {e}")
-                    is_running = False
+                    await self.consumer.commit()
 
-        except KeyboardInterrupt:
-            logger.info("Gracefully shutting down consumer...")
-        finally:
-            self.executor.shutdown(wait=True)
-            self.consumer.close()
+            except (ValueError, ValidationError, TypeError) as e:
+                logger.error(f"Failed to decode message {payload}: {e}")
+                await self.consumer.commit()
+            except Exception as e:
+                logger.exception(f"Unexpected error occurred: {e}")
+                break

@@ -3,7 +3,7 @@ import asyncio
 
 from functools import partial
 
-from confluent_kafka.aio import AIOProducer
+from aiokafka import AIOKafkaProducer
 
 from config.config import get_settings
 from llm.llm_factory import get_llm_provider
@@ -14,7 +14,7 @@ from pipeline.container import (
     build_merge_pipeline,
 )
 
-from messaging.consumer import KafkaConsumer
+from messaging.consumer import AsyncKafkaConsumer
 from storage.storage_factory import get_storage
 from pipeline.orchestrator import process_document
 from embedding.transformer import Embedder
@@ -49,8 +49,11 @@ async def setup_dependencies():
     )
     entity_resolution = build_merge_pipeline(settings, resolution_llm, embedder)
 
-    consumer = KafkaConsumer(settings)
-    producer = AIOProducer({"bootstrap.servers": settings.kafka.KAFKA_BROKER})
+    consumer = AsyncKafkaConsumer(settings)
+    producer = AIOKafkaProducer(bootstrap_servers=settings.kafka.KAFKA_BROKER)
+
+    await consumer.start()
+    await producer.start()
 
     return settings, ingestion_pipeline, entity_resolution, storage, consumer, producer
 
@@ -71,9 +74,14 @@ async def main():
         producer=producer,
     )
 
-    consumer.consume_messages(
-        settings.kafka.KAFKA_CONSUMER_TOPIC, orchestrator_callback
-    )
+    try:
+        await consumer.consume_messages(orchestrator_callback)
+    except Exception as e:
+        logger.error(f"Error occurred while consuming messages: {e}")
+    finally:
+        logger.info("Cleaning up Kafka connections...")
+        await consumer.stop()
+        await producer.stop()
 
 
 if __name__ == "__main__":

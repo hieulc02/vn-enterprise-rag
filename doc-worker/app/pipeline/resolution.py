@@ -201,8 +201,8 @@ class EntityResolutionPipeline:
         chunk_texts: dict[str, str] = {chunk.chunk_id: chunk.text for chunk in chunks}
         dirty_set: set[str] = set()
 
-        group_entities, entity_instances = self._extract_and_group_entities(
-            chunk_graphs
+        group_entities, entity_instances = await asyncio.to_thread(
+            self._extract_and_group_entities, chunk_graphs
         )
 
         if not group_entities:
@@ -212,7 +212,7 @@ class EntityResolutionPipeline:
 
         await self._embed_instances(entity_instances)
 
-        llm_tasks, review_items = self._route_entity_groups(
+        llm_tasks, review_items = await self._route_entity_groups(
             group_entities=group_entities,
             chunk_id_map=chunk_id_map,
             chunk_texts=chunk_texts,
@@ -231,7 +231,7 @@ class EntityResolutionPipeline:
             file_key, chunks, chunk_graphs, chunk_id_map
         )
 
-    def _route_entity_groups(
+    async def _route_entity_groups(
         self,
         group_entities: dict[str, list[EntityInstance]],
         chunk_id_map: dict[str, dict[str, str]],
@@ -244,6 +244,8 @@ class EntityResolutionPipeline:
         review_items = []
 
         for norm_entity, instances in group_entities.items():
+
+            await asyncio.sleep(0)
 
             first_instance = instances[0]
 
@@ -262,7 +264,9 @@ class EntityResolutionPipeline:
                 new_uuid = self._create_entity(
                     instances, entity_type, first_instance.norm_embedding
                 )
-                self._map_entity_props(instances, new_uuid, chunk_id_map, dirty_set)
+                await self._map_entity_props(
+                    instances, new_uuid, chunk_id_map, dirty_set
+                )
                 continue
 
             candidates = self.registry.search_vector_candidates(
@@ -273,7 +277,9 @@ class EntityResolutionPipeline:
                 new_uuid = self._create_entity(
                     instances, entity_type, first_instance.norm_embedding
                 )
-                self._map_entity_props(instances, new_uuid, chunk_id_map, dirty_set)
+                await self._map_entity_props(
+                    instances, new_uuid, chunk_id_map, dirty_set
+                )
                 continue
 
             best_uid, best_score = candidates[0]
@@ -282,7 +288,9 @@ class EntityResolutionPipeline:
             )
 
             if best_score >= auto_merge_threshold:
-                self._map_entity_props(instances, best_uid, chunk_id_map, dirty_set)
+                await self._map_entity_props(
+                    instances, best_uid, chunk_id_map, dirty_set
+                )
             elif llm_review_threshold <= best_score < auto_merge_threshold:
                 candidate_entity = self.registry.entities[best_uid]
                 candidate_context = self._gen_entity_context(
@@ -317,7 +325,9 @@ class EntityResolutionPipeline:
                 new_uuid = self._create_entity(
                     instances, entity_type, first_instance.norm_embedding
                 )
-                self._map_entity_props(instances, new_uuid, chunk_id_map, dirty_set)
+                await self._map_entity_props(
+                    instances, new_uuid, chunk_id_map, dirty_set
+                )
 
         return llm_tasks, review_items
 
@@ -421,7 +431,7 @@ class EntityResolutionPipeline:
         seen_contexts_matrix = np.array(seen_contexts_list)
         return float(max(np.dot(seen_contexts_matrix, target_embedding)))
 
-    def _map_entity_props(
+    async def _map_entity_props(
         self,
         instances: list[EntityInstance],
         uid: str,
@@ -441,6 +451,8 @@ class EntityResolutionPipeline:
 
         for instance in instances:
 
+            await asyncio.sleep(0)
+
             chunk_id_map[instance.chunk_id][instance.entity.local_id] = uid
 
             if merge_entity_properties(
@@ -456,8 +468,10 @@ class EntityResolutionPipeline:
                 )
 
                 if instance.context and instance.context not in desc_components:
-                    similarity_score = self._evaluate_similarity_context(
-                        seen_embeddings_list, instance_embedding
+                    similarity_score = await asyncio.to_thread(
+                        self._evaluate_similarity_context,
+                        seen_embeddings_list,
+                        instance_embedding,
                     )
 
                     if self._should_add_new_entity_description(similarity_score):
@@ -521,14 +535,16 @@ class EntityResolutionPipeline:
                 llm_result = None
 
             if llm_result and llm_result.is_same_entity:
-                self._map_entity_props(
+                await self._map_entity_props(
                     instances, review_item["candidate"], chunk_id_map, dirty_set
                 )
             else:
                 new_uid = self._create_entity(
                     instances, review_item["type"], review_item["embedding"]
                 )
-                self._map_entity_props(instances, new_uid, chunk_id_map, dirty_set)
+                await self._map_entity_props(
+                    instances, new_uid, chunk_id_map, dirty_set
+                )
 
 
 def merge_entity_properties(
