@@ -1,27 +1,22 @@
 package com.hieulc.insightragworker.service;
 
+import com.hieulc.coreinfrastructure.exception.StorageProviderException;
 import com.hieulc.insightragworker.command.DocumentTaggingCommand;
 import com.hieulc.insightragworker.command.handler.DocumentTaggingHandler;
-import com.hieulc.insightragworker.dto.DocumentId;
-import com.hieulc.insightragworker.enums.DocumentAclRole;
 import com.hieulc.insightragworker.enums.DocumentTags;
 import com.hieulc.insightragworker.exception.appli.DepartmentInvalidException;
 import com.hieulc.insightragworker.exception.appli.DocumentIdNotFoundException;
-import com.hieulc.insightragworker.exception.infra.StorageProviderException;
-import com.hieulc.insightragworker.repository.DepartmentRepository;
 import com.hieulc.insightragworker.repository.DocumentRepository;
 import com.hieulc.insightragworker.validation.DepartmentValidationCache;
 import io.minio.GetObjectTagsArgs;
 import io.minio.MinioClient;
 import io.minio.errors.MinioException;
 import io.minio.messages.Tags;
-import jakarta.transaction.Transactional;
+import java.util.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.resilience.annotation.Retryable;
 import org.springframework.stereotype.Service;
-
-import java.util.*;
 
 @Service
 @RequiredArgsConstructor

@@ -1,11 +1,12 @@
 package com.hieulc.insightragworker.config;
 
+import com.hieulc.coreinfrastructure.exception.StorageProviderException;
 import com.hieulc.insightragworker.exception.appli.DepartmentInvalidException;
-import com.hieulc.insightragworker.exception.infra.StorageProviderException;
+import java.util.ArrayList;
+import java.util.List;
 import org.aopalliance.intercept.MethodInterceptor;
-import org.springframework.amqp.rabbit.config.RetryInterceptorBuilder;
-import org.springframework.core.retry.*;
 import org.springframework.amqp.core.*;
+import org.springframework.amqp.rabbit.config.RetryInterceptorBuilder;
 import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.retry.MessageRecoverer;
@@ -14,11 +15,8 @@ import org.springframework.amqp.support.converter.*;
 import org.springframework.boot.amqp.autoconfigure.SimpleRabbitListenerContainerFactoryConfigurer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.retry.*;
 import org.springframework.core.retry.RetryPolicy;
-
-import java.util.ArrayList;
-import java.util.List;
-
 
 @Configuration
 public class RabbitMQConfig {

@@ -1,6 +1,8 @@
 package com.hieulc.insightragworker.config;
 
-import com.hieulc.insightragworker.exception.infra.StorageProviderException;
+import static org.mockito.Mockito.*;
+
+import com.hieulc.coreinfrastructure.exception.StorageProviderException;
 import com.rabbitmq.client.Channel;
 import org.aopalliance.intercept.MethodInterceptor;
 import org.junit.jupiter.api.DisplayName;
@@ -14,10 +16,6 @@ import org.springframework.amqp.core.MessageProperties;
 import org.springframework.amqp.rabbit.retry.MessageRecoverer;
 import org.springframework.amqp.rabbit.retry.RepublishMessageRecoverer;
 import org.springframework.aop.framework.*;
-
-
-import static org.mockito.Mockito.*;
-
 
 @ExtendWith(MockitoExtension.class)
 class RabbitMQConfigTest {
