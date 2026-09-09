@@ -1,0 +1,4 @@
+CREATE CONSTRAINT c_chunk_id IF NOT EXISTS FOR (c:DocumentChunk) REQUIRE c.chunk_id IS UNIQUE;
+CREATE CONSTRAINT c_entity_id IF NOT EXISTS FOR (e:Entity) REQUIRE e.id IS UNIQUE;
+CREATE CONSTRAINT c_document_id IF NOT EXISTS FOR (d:Document) REQUIRE d.document_id IS UNIQUE;
+

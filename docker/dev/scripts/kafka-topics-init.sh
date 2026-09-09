@@ -34,7 +34,8 @@ main(){
   create_topic "rag-cdc-topic" 3 1
   create_topic "rag-dlq-topic" 3 1
   create_topic "rag-extracting-topic" 3 1
-  create_topic "rag-debezium-offset-topic" 1 1
+  create_topic "rag-extracting-topic-dlt" 3 1
+  create_topic "rag-debezium-offset-topic" 1
 
   log_info "All topics create successfully"
 
