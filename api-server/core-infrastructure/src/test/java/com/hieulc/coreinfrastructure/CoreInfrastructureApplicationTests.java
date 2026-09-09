@@ -1,10 +1,10 @@
-package com.hieulc.insightragapplication;
+package com.hieulc.coreinfrastructure;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class InsightragApplicationTests {
+class CoreInfrastructureApplicationTests {
 
     @Test
     void contextLoads() {
