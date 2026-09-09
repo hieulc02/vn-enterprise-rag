@@ -29,10 +29,13 @@ services:
 
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
 
-#      KAFKA_HEAP_OPTS: "-Xmx512M -Xms512M"
+      #      KAFKA_HEAP_OPTS: "-Xmx512M -Xms512M"
       KAFKA_HEAP_OPTS: "-Xmx1G -Xms1G"
 
-      KAFKA_BROKER_SESSION_TIMEOUT_MS: 30000
+      KAFKA_REQUEST_TIMEOUT_MS: 30000
+      KAFKA_CONTROLLER_SOCKET_TIMEOUT_MS: 30000
+
+      KAFKA_BROKER_SESSION_TIMEOUT_MS: 60000
       KAFKA_CONTROLLER_QUORUM_REQUEST_TIMEOUT_MS: 10000
 
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
@@ -41,7 +44,7 @@ services:
       KAFKA_SHARE_COORDINATOR_STATE_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_SHARE_COORDINATOR_STATE_TOPIC_MIN_ISR: 1
     healthcheck:
-      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 > /dev/null 2>&1 || exit 1"]
+      test: [ "CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 > /dev/null 2>&1 || exit 1" ]
       interval: 10s
       timeout: 10s
       retries: 3
@@ -56,7 +59,7 @@ services:
       - insightrag_net
     volumes:
       - ../scripts/kafka-topics-init.sh:/tmp/kafka-topics-init.sh
-    entrypoint: ["bash", "-c"]
+    entrypoint: [ "bash", "-c" ]
     command: "/tmp/kafka-topics-init.sh"
 
 

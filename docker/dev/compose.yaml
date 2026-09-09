@@ -3,6 +3,7 @@ name: insightrag
 include:
   - path:
       - ./data/compose.yaml
+      - ./graph/compose.yaml
       - ./storage/compose.yaml
 #    env_file: ./.env
 
