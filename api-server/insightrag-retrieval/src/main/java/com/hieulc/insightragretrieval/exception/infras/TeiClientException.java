@@ -1,0 +1,15 @@
+package com.hieulc.insightragretrieval.exception.infras;
+
+import com.hieulc.coreinfrastructure.exception.InfrastructureException;
+import lombok.Getter;
+
+public class TeiClientException extends InfrastructureException {
+  @Getter private final String errorType;
+  @Getter private final int statusCode;
+
+  public TeiClientException(String message, String errorType, int statusCode) {
+    super(message);
+    this.errorType = errorType;
+    this.statusCode = statusCode;
+  }
+}
