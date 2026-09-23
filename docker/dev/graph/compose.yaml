@@ -2,6 +2,7 @@ services:
   neo4j:
     image: neo4j:${GRAPH_VERSION:-2026.07.1}
     container_name: neo4j-server
+    profiles: [ ingestion, retrieval ]
     env_file:
       - ../.env
     volumes:
@@ -11,10 +12,28 @@ services:
     environment:
       - NEO4J_AUTH=neo4j/${GRAPH_PASSWORD:-neo4jpassword}
       - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_server_memory_pagecache_size=64M
+      - NEO4J_server_memory_heap_initial__size=256M
+      - NEO4J_server_memory_heap_max__size=256M
     ports:
       - "7474:7474"
       - "7687:7687"
     restart: always
+
+  tei-embedding:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9
+    container_name: tei_embedding
+    #    restart: unless-stopped
+    profiles: [ retrieval ]
+    ports:
+      - "8080:80"
+    volumes:
+      - ../.local_data/tei_data:/data
+    environment:
+      MODEL_ID: AITeamVN/Vietnamese_Embedding
+      MAX_BATCH_TOKENS: 512
+      MAX_CLIENT_BATCH_SIZE: 4
+
 
 volumes:
   neo4j_data:

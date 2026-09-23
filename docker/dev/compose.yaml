@@ -3,10 +3,9 @@ name: insightrag
 include:
   - path:
       - ./data/compose.yaml
-      - ./graph/compose.yaml
       - ./storage/compose.yaml
-#    env_file: ./.env
-
+      - ./graph/compose.yaml
+      
 networks:
   insightrag_net:
     name: insightrag_net
