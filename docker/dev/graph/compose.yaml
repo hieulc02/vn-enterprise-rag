@@ -1,6 +1,6 @@
 services:
   neo4j:
-    image: neo4j:${GRAPH_VERSION:-2026.07.1}
+    image: neo4j:${GRAPH_VERSION:-2026.09.0}
     container_name: neo4j-server
     profiles: [ ingestion, retrieval ]
     env_file:
@@ -20,19 +20,33 @@ services:
       - "7687:7687"
     restart: always
 
-  tei-embedding:
-    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9
-    container_name: tei_embedding
-    #    restart: unless-stopped
+  infinity-embedding:
+    image: michaelf34/infinity:latest-cpu
+    container_name: infinity_embedding
     profiles: [ retrieval ]
     ports:
-      - "8080:80"
+      - "8081:7997"
     volumes:
-      - ../.local_data/tei_data:/data
+      - ../.local_data/hf_cache:/app/.cache
     environment:
-      MODEL_ID: AITeamVN/Vietnamese_Embedding
-      MAX_BATCH_TOKENS: 512
-      MAX_CLIENT_BATCH_SIZE: 4
+      - HF_HOME=/app/.cache
+      - HF_HUB_DISABLE_XET=1
+    command:
+      - "v2"
+      - "--model-id"
+      - "AITeamVN/Vietnamese_Embedding"
+      - "--engine"
+      - "torch"
+      - "--batch-size"
+      - "2"
+      - "--port"
+      - "7997"
+      - "--model-warmup"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:7997/health" ]
+      interval: 60s
+      timeout: 5s
+      retries: 3
 
 
 volumes:
