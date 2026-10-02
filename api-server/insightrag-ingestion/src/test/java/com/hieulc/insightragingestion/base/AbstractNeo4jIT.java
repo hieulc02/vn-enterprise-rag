@@ -9,9 +9,9 @@ public abstract class AbstractNeo4jIT {
   protected static Neo4jContainer neo4j =
       new Neo4jContainer("neo4j:5.26")
           .withoutAuthentication()
-          .withStartupTimeout(Duration.ofMinutes(3));
-
-  //          .withReuse(true);
+          .withStartupTimeout(Duration.ofMinutes(3))
+          .withPlugins("apoc")
+          .withReuse(true);
 
   static {
     try {

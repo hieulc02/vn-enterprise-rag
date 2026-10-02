@@ -4,6 +4,7 @@ services:
     image: confluentinc/cp-kafka:8.2.2
     container_name: insightrag-kafka
     hostname: kafka
+    profiles: [ worker, ingestion ]
     restart: unless-stopped
     env_file:
       - ../.env
@@ -30,7 +31,7 @@ services:
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
 
       #      KAFKA_HEAP_OPTS: "-Xmx512M -Xms512M"
-      KAFKA_HEAP_OPTS: "-Xmx1G -Xms1G"
+      KAFKA_HEAP_OPTS: "-Xmx256M -Xms256M"
 
       KAFKA_REQUEST_TIMEOUT_MS: 30000
       KAFKA_CONTROLLER_SOCKET_TIMEOUT_MS: 30000
@@ -52,6 +53,7 @@ services:
 
   broker-setup:
     image: confluentinc/cp-kafka:8.2.2
+    profiles: [ worker ]
     depends_on:
       broker:
         condition: service_healthy
@@ -66,6 +68,7 @@ services:
   postgres-db:
     image: pgvector/pgvector:pg16
     container_name: insightrag-db
+    profiles: [ worker ]
     restart: unless-stopped
     env_file:
       - ../.env
@@ -89,6 +92,8 @@ services:
       - "max_replication_slots=1"
       - "-c"
       - "wal_sender_timeout=120000"
+      - "-c"
+      - "shared_buffers=64MB"
     healthcheck:
       test: [ "CMD", "pg_isready", "-U", "${POSTGRES_USER:-insightrag}", "-d", "${POSTGRES_DB:-insightrag_db}" ]
       interval: 10s

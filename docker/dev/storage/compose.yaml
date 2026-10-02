@@ -4,6 +4,7 @@ services:
     image: rabbitmq:4.3.0-management-alpine
     container_name: insightrag-local-rabbitmq
     hostname: insightrag-rabbitmq
+    profiles: [ worker ]
     env_file:
       - ../.env
     ports:
@@ -23,9 +24,10 @@ services:
   minio:
     image: pgsty/minio
     container_name: insightrag-local-minio
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
+    profiles: [ worker, ingestion ]
+    #    depends_on:
+    #      rabbitmq:
+    #        condition: service_healthy
     env_file:
       - ../.env
     ports:
@@ -52,6 +54,7 @@ services:
   minio-cli:
     image: minio/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1
     container_name: insightrag-local-minioinit
+    profiles: [ worker ]
     networks:
       - insightrag_net
     depends_on:

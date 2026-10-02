@@ -51,10 +51,6 @@ public class GraphTestDataFactory {
 
   public static Entity createEntity(
       String entityId, List<String> aliases, Set<String> sourceChunkIds) {
-    List<String> resolvedAliases =
-        (aliases == null || aliases.isEmpty())
-            ? List.of("Alias 1", "Alias 2")
-            : List.copyOf(aliases);
 
     Set<String> resolvedSourceChunkIds =
         (sourceChunkIds == null) ? Set.of() : Set.copyOf(sourceChunkIds);
@@ -62,8 +58,8 @@ public class GraphTestDataFactory {
     return new Entity(
         entityId,
         "Default-Title",
-        resolvedAliases,
-        List.of("Entity", "Aliases"),
+        aliases,
+        List.of("Node", "Aliases"),
         "Entity-Description",
         resolvedSourceChunkIds,
         Map.of("attribute", "fake", "embedding", List.of(0.1f, 0.2f)));

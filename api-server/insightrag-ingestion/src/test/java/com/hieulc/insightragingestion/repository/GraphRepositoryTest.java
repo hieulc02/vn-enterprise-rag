@@ -2,22 +2,14 @@ package com.hieulc.insightragingestion.repository;
 
 import static org.assertj.core.api.Assertions.*;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 class GraphRepositoryTest {
 
-  private GraphRepositoryImpl graphRepository;
-
-  @BeforeEach
-  void setUp() {
-    graphRepository = new GraphRepositoryImpl(null);
-  }
-
   @Test
   void shouldGenerateCorrectMergeChunkCypher() {
 
-    String cypher = graphRepository.buildMergeChunksNodeAndEdgeCypher();
+    String cypher = GraphRepositoryImpl.buildMergeChunksNodeAndEdgeCypher();
 
     String expectedCypher =
         """
@@ -37,28 +29,28 @@ class GraphRepositoryTest {
 
   @Test
   void shouldGenerateCorrectMergeEntityCypher() {
-    String cypher = graphRepository.buildMergeEntityCypher();
+    String cypher = GraphRepositoryImpl.buildMergeEntityCypher();
 
     String expectedCypher =
         """
-        UNWIND $batch AS item
-        MERGE (e:Entity {id: item.id})
-        SET e.title = item.title, e.description = item.description
-        SET e.aliases = coalesce(item.aliases, [])
-        SET e += item.properties
-        SET e:$(item.labels)
+          UNWIND $batch AS item
+          MERGE (e:Node {id: item.id})
+          SET e.title = item.title, e.description = item.description
+          SET e.aliases = [alias IN coalesce(e.aliases, []) WHERE NOT alias IN coalesce(item.aliases, [])] + coalesce(item.aliases, [])
+          SET e += item.properties
+          SET e:$(coalesce(item.labels, []))
         """;
     assertThat(cypher).isEqualToNormalizingWhitespace(expectedCypher);
   }
 
   @Test
   void shouldGenerateCorrectEntityEdgeCypher() {
-    String cypher = graphRepository.buildMergeEntityEdgeCypher();
+    String cypher = GraphRepositoryImpl.buildMergeEntityEdgeCypher();
 
     String expectedCypher =
         """
         UNWIND $batch AS item
-        MATCH (e:`Entity` {id: item.id})
+        MATCH (e:`Node` {id: item.id})
         UNWIND item.chunk_ids AS chunkId
         MATCH (c:`DocumentChunk` {chunk_id: chunkId})
         MERGE (e)-[:`EXTRACTED_FROM`]->(c)
@@ -69,18 +61,20 @@ class GraphRepositoryTest {
 
   @Test
   void shouldGenerateCorrectLinkEdgeCypher() {
-    String cypher = graphRepository.buildLinkChunksCypher();
+    String cypher = GraphRepositoryImpl.buildLinkChunksCypher();
 
     String expectedCypher =
         """
         MATCH (d:`Document` {document_id: $docId})<-[:`PART_OF`]-(c:`DocumentChunk`)
         WITH c ORDER BY c.chunk_index ASC
         WITH collect(c) AS chunks
-        UNWIND range(0, (size(chunks) - 2)) AS i
-        WITH chunks, chunks[i] AS current, chunks[(i + 1)] AS next_node
-        MERGE (current)-[:`NEXT`]->(next_node)
-        RETURN size(chunks) AS chunkCount
-       """;
+        WITH chunks, size(chunks) AS chunkCount
+        CALL (chunks) {UNWIND range(0, (size(chunks) - 2)) AS i
+          WITH chunks[i] AS current, chunks[(i + 1)] AS next_node
+          WHERE (current IS NOT NULL AND next_node IS NOT NULL)
+          MERGE (current)-[:`NEXT`]->(next_node)}
+        RETURN chunkCount
+    """;
 
     assertThat(cypher).isEqualToNormalizingWhitespace(expectedCypher);
   }
@@ -88,15 +82,16 @@ class GraphRepositoryTest {
   @Test
   void shouldGenerateCorrectMergeRelationshipCypher() {
     String relType = "RELATED_TO";
-    String cypher = graphRepository.buildMergeRelationshipCypher(relType);
+    String cypher = GraphRepositoryImpl.buildMergeRelationshipCypher(relType);
 
     String expectedCypher =
         String.format(
             """
         UNWIND $batch AS item
-        MATCH (src:`Entity` {id: item.source})
-        MATCH (tgt:`Entity` {id: item.target})
+        MATCH (src:`Node` {id: item.source})
+        MATCH (tgt:`Node` {id: item.target})
         MERGE (src)-[r:`%s`]->(tgt)
+        SET r.source_chunk_ids = ([cid IN coalesce(r.source_chunk_ids, []) WHERE NOT (cid IN coalesce(item.source_chunk_ids, []))] + coalesce(item.source_chunk_ids, []))
         SET r += item.props
         """,
             relType);

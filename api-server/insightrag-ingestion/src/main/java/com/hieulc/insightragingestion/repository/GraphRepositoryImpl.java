@@ -4,8 +4,9 @@ import com.hieulc.insightragingestion.dto.DocumentChunk;
 import com.hieulc.insightragingestion.dto.Entity;
 import com.hieulc.insightragingestion.dto.Relationship;
 import java.util.*;
-import lombok.RequiredArgsConstructor;
+import java.util.concurrent.ConcurrentHashMap;
 import org.neo4j.cypherdsl.core.Cypher;
+import org.neo4j.cypherdsl.core.Expression;
 import org.neo4j.cypherdsl.core.Node;
 import org.neo4j.cypherdsl.core.Statement;
 import org.springframework.data.neo4j.core.Neo4jClient;
@@ -13,17 +14,28 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
-@RequiredArgsConstructor
 public class GraphRepositoryImpl implements GraphCustomRepository {
 
   private final Neo4jClient neo4jClient;
 
+  private final String mergeChunksNodeAndEdgeCypher;
+  private final String mergeEntityCypher;
+  private final String mergeEntityEdgeCypher;
+  private final String linkChunksCypher;
+
+  private final Map<String, String> relationshipCypherCache = new ConcurrentHashMap<>();
+
+  public GraphRepositoryImpl(Neo4jClient neo4jClient) {
+    this.neo4jClient = neo4jClient;
+    this.mergeChunksNodeAndEdgeCypher = buildMergeChunksNodeAndEdgeCypher();
+    this.mergeEntityCypher = buildMergeEntityCypher();
+    this.mergeEntityEdgeCypher = buildMergeEntityEdgeCypher();
+    this.linkChunksCypher = buildLinkChunksCypher();
+  }
+
   @Override
   @Transactional
   public void batchInsertChunks(String documentId, List<DocumentChunk> chunks) {
-
-    String chunkCypher = buildMergeChunksNodeAndEdgeCypher();
-
     List<Map<String, Object>> batch =
         chunks.stream()
             .map(
@@ -44,15 +56,18 @@ public class GraphRepositoryImpl implements GraphCustomRepository {
                 })
             .toList();
 
-    neo4jClient.query(chunkCypher).bind(batch).to("batch").bind(documentId).to("docId").run();
+    neo4jClient
+        .query(mergeChunksNodeAndEdgeCypher)
+        .bind(batch)
+        .to("batch")
+        .bind(documentId)
+        .to("docId")
+        .run();
   }
 
   @Override
   @Transactional
   public void batchInsertEntities(List<Entity> entities) {
-
-    String nodeCypher = buildMergeEntityCypher();
-
     List<Map<String, Object>> nodeBatch =
         entities.stream()
             .map(
@@ -69,9 +84,7 @@ public class GraphRepositoryImpl implements GraphCustomRepository {
                 })
             .toList();
 
-    neo4jClient.query(nodeCypher).bind(nodeBatch).to("batch").run();
-
-    String edgeCypher = buildMergeEntityEdgeCypher();
+    neo4jClient.query(mergeEntityCypher).bind(nodeBatch).to("batch").run();
 
     List<Map<String, Object>> edgeBatch =
         entities.stream()
@@ -84,7 +97,7 @@ public class GraphRepositoryImpl implements GraphCustomRepository {
             .toList();
 
     if (!edgeBatch.isEmpty()) {
-      neo4jClient.query(edgeCypher).bind(edgeBatch).to("batch").run();
+      neo4jClient.query(mergeEntityEdgeCypher).bind(edgeBatch).to("batch").run();
     }
   }
 
@@ -104,14 +117,15 @@ public class GraphRepositoryImpl implements GraphCustomRepository {
             props.put("description", rel.description());
           }
           props.put("weight", rel.weight());
-          if (rel.sourceChunkIds() != null && !rel.sourceChunkIds().isEmpty()) {
-            props.put("source_chunk_ids", rel.sourceChunkIds());
-          }
 
           Map<String, Object> batchMap = new HashMap<>();
           batchMap.put("source", rel.source());
           batchMap.put("target", rel.target());
           batchMap.put("props", props);
+
+          if (rel.sourceChunkIds() != null && !rel.sourceChunkIds().isEmpty()) {
+            props.put("source_chunk_ids", rel.sourceChunkIds());
+          }
 
           groupedRelationship.computeIfAbsent(rel.type(), k -> new ArrayList<>()).add(batchMap);
         });
@@ -120,7 +134,9 @@ public class GraphRepositoryImpl implements GraphCustomRepository {
       String type = entry.getKey();
       List<Map<String, Object>> batch = entry.getValue();
 
-      String relationshipCypher = buildMergeRelationshipCypher(type);
+      String relationshipCypher =
+          relationshipCypherCache.computeIfAbsent(
+              type, GraphRepositoryImpl::buildMergeRelationshipCypher);
 
       neo4jClient.query(relationshipCypher).bind(batch).to("batch").run();
     }
@@ -129,10 +145,8 @@ public class GraphRepositoryImpl implements GraphCustomRepository {
   @Override
   @Transactional
   public int linkChunks(String documentId) {
-    String linkCypher = buildLinkChunksCypher();
-
     return neo4jClient
-        .query(linkCypher)
+        .query(linkChunksCypher)
         .bind(documentId)
         .to("docId")
         .fetchAs(Integer.class)
@@ -142,33 +156,30 @@ public class GraphRepositoryImpl implements GraphCustomRepository {
         .orElse(0);
   }
 
-  String buildMergeChunksNodeAndEdgeCypher() {
+  static String buildMergeChunksNodeAndEdgeCypher() {
     var docIdParam = Cypher.parameter("docId");
     var batchParam = Cypher.parameter("batch");
     var item = Cypher.name("item");
     Node d = Cypher.node("Document").named("d");
     Node c = Cypher.node("DocumentChunk").named("c");
 
-    Statement chunkStatement =
-        Cypher.merge(d.withProperties("document_id", docIdParam))
-            .with(d)
-            .unwind(batchParam)
-            .as(item)
-            .merge(c.withProperties("chunk_id", item.property("chunk_id")))
-            .merge(c.relationshipTo(d, "PART_OF"))
-            .set(
-                c.property("text").to(item.property("text")),
-                c.property("chunk_index").to(item.property("chunk_index")),
-                c.property("embedding").to(item.property("embedding")))
-            .mutate(c, item.property("metadata"))
-            .build();
-
-    return chunkStatement.getCypher();
+    return Cypher.merge(d.withProperties("document_id", docIdParam))
+        .with(d)
+        .unwind(batchParam)
+        .as(item)
+        .merge(c.withProperties("chunk_id", item.property("chunk_id")))
+        .merge(c.relationshipTo(d, "PART_OF"))
+        .set(
+            c.property("text").to(item.property("text")),
+            c.property("chunk_index").to(item.property("chunk_index")),
+            c.property("embedding").to(item.property("embedding")))
+        .mutate(c, item.property("metadata"))
+        .build()
+        .getCypher();
   }
 
-  String buildMergeEntityCypher() {
-    // Drop because Cypher-DLS requires property assignments
-    // to use an even number of arguments
+  static String buildMergeEntityCypher() {
+    // Drop because Cypher-DLS doesn't directly support `apoc.create.addLabels` APOC procedure
     //    var batchParam = Cypher.parameter("batch");
     //    var item = Cypher.name("item");
     //    Node e = Cypher.node("Entity").named("e");
@@ -178,93 +189,113 @@ public class GraphRepositoryImpl implements GraphCustomRepository {
     //            .merge(e.withProperties("id", item.property("id")))
     //            .set(
     //                e.property("title").to(item.property("title")),
-    //                e.property("description").to(item.property("description")))
-    //            .set(Cypher.raw("e:$(item.labels)"))
-    //            .set(
+    //                e.property("description").to(item.property("description")),
     //                e.property("aliases")
     //                    .to(Cypher.coalesce(item.property("aliases"), Cypher.listOf())))
     //            .mutate(e, item.property("properties"))
+    //            .with(e, item)
+    //            .call("apoc.create.addLabels")
+    //            .withArgs((Expression) e, Cypher.coalesce(item.property("labels"),
+    // Cypher.listOf()))
+    //            .yield("node")
+    //            .finish()
     //            .build();
-
     return """
       UNWIND $batch AS item
-      MERGE (e:Entity {id: item.id})
+      MERGE (e:Node {id: item.id})
       SET e.title = item.title, e.description = item.description
-      SET e.aliases = coalesce(item.aliases, [])
+      SET e.aliases = [alias IN coalesce(e.aliases, []) WHERE NOT alias IN coalesce(item.aliases, [])] + coalesce(item.aliases, [])
       SET e += item.properties
-      SET e:$(item.labels)
+      SET e:$(coalesce(item.labels, []))
     """;
   }
 
-  String buildMergeEntityEdgeCypher() {
+  static String buildMergeEntityEdgeCypher() {
     var batchParam = Cypher.parameter("batch");
     var item = Cypher.name("item");
     var chunkId = Cypher.name("chunkId");
-    Node e = Cypher.node("Entity").named("e");
+    Node e = Cypher.node("Node").named("e");
     Node c = Cypher.node("DocumentChunk").named("c");
 
-    Statement edgeStatement =
-        Cypher.unwind(batchParam)
-            .as(item)
-            .match(e.withProperties("id", item.property("id")))
-            .unwind(item.property("chunk_ids"))
-            .as(chunkId)
-            .match(c.withProperties("chunk_id", chunkId))
-            .merge(e.relationshipTo(c, "EXTRACTED_FROM"))
-            .build();
-
-    return edgeStatement.getCypher();
+    return Cypher.unwind(batchParam)
+        .as(item)
+        .match(e.withProperties("id", item.property("id")))
+        .unwind(item.property("chunk_ids"))
+        .as(chunkId)
+        .match(c.withProperties("chunk_id", chunkId))
+        .merge(e.relationshipTo(c, "EXTRACTED_FROM"))
+        .build()
+        .getCypher();
   }
 
-  String buildLinkChunksCypher() {
+  static String buildLinkChunksCypher() {
     var docIdParam = Cypher.parameter("docId");
     var chunks = Cypher.name("chunks");
     var i = Cypher.name("i");
+    var chunkCount = Cypher.name("chunkCount");
+    var currentName = Cypher.name("current");
+    var nextNodeName = Cypher.name("next_node");
 
     Node current = Cypher.anyNode("current");
     Node nextNode = Cypher.anyNode("next_node");
     Node d = Cypher.node("Document").named("d").withProperties("document_id", docIdParam);
     Node c = Cypher.node("DocumentChunk").named("c");
-    Statement linkStatement =
-        Cypher.match(d.relationshipFrom(c, "PART_OF"))
-            .with(c)
-            .orderBy(c.property("chunk_index").ascending())
-            .with(Cypher.collect(c).as(chunks))
-            .unwind(
+
+    Statement subquery =
+        Cypher.unwind(
                 Cypher.range(
                     Cypher.literalOf(0), Cypher.size(chunks).subtract(Cypher.literalOf(2))))
             .as(i)
             .with(
-                chunks,
-                Cypher.valueAt(chunks, i).as("current"),
-                Cypher.valueAt(chunks, i.add(Cypher.literalOf(1))).as("next_node"))
+                Cypher.valueAt(chunks, i).as(currentName),
+                Cypher.valueAt(chunks, i.add(Cypher.literalOf(1))).as(nextNodeName))
+            .where(current.isNotNull())
+            .and(nextNode.isNotNull())
             .merge(current.relationshipTo(nextNode, "NEXT"))
-            .returningDistinct(Cypher.size(chunks).as("chunkCount"))
             .build();
 
-    return linkStatement.getCypher();
+    return Cypher.match(d.relationshipFrom(c, "PART_OF"))
+        .with(c)
+        .orderBy(c.property("chunk_index").ascending())
+        .with(Cypher.collect(c).as(chunks))
+        .with(chunks, Cypher.size(chunks).as(chunkCount))
+        .call(subquery, chunks)
+        .returning(chunkCount)
+        .build()
+        .getCypher();
   }
 
-  String buildMergeRelationshipCypher(String type) {
+  static String buildMergeRelationshipCypher(String type) {
     var batchParam = Cypher.parameter("batch");
     var item = Cypher.name("item");
-    Node src = Cypher.node("Entity").named("src").withProperties("id", item.property("source"));
-    Node tgt = Cypher.node("Entity").named("tgt").withProperties("id", item.property("target"));
+    var cid = Cypher.name("cid");
+
+    Node src = Cypher.node("Node").named("src").withProperties("id", item.property("source"));
+    Node tgt = Cypher.node("Node").named("tgt").withProperties("id", item.property("target"));
+
+    Expression emptyList = Cypher.listOf();
+    Expression itemChunkIds = Cypher.coalesce(item.property("source_chunk_ids"), emptyList);
 
     org.neo4j.cypherdsl.core.Relationship r = src.relationshipTo(tgt, type).named("r");
-    Statement relationshipStatement =
-        Cypher.unwind(batchParam)
-            .as(item)
-            .match(src)
-            .match(tgt)
-            .merge(r)
-            .mutate(r, item.property("props"))
-            .build();
 
-    return relationshipStatement.getCypher();
+    Expression cidList =
+        Cypher.listWith(cid)
+            .in(Cypher.coalesce(r.property("source_chunk_ids"), emptyList))
+            .where(cid.in(itemChunkIds).not())
+            .returning();
+
+    return Cypher.unwind(batchParam)
+        .as(item)
+        .match(src)
+        .match(tgt)
+        .merge(r)
+        .set(r.property("source_chunk_ids").to(cidList.add(itemChunkIds)))
+        .mutate(r, item.property("props"))
+        .build()
+        .getCypher();
   }
 
-  private Map<String, Object> sanitizeProperties(Map<String, Object> properties) {
+  private static Map<String, Object> sanitizeProperties(Map<String, Object> properties) {
     if (properties == null || properties.isEmpty()) return Collections.emptyMap();
 
     Map<String, Object> sanitized = new HashMap<>();

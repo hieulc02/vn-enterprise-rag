@@ -35,7 +35,7 @@ class GraphIngestionServiceIT extends AbstractNeo4jIT {
 
   @AfterEach
   void cleanDb() {
-    neo4jClient.query("MATCH (n:DocumentChunk|Document|Entity) DETACH DELETE n").run();
+    neo4jClient.query("MATCH (n:DocumentChunk|Document|Node) DETACH DELETE n").run();
   }
 
   @Test
@@ -61,7 +61,7 @@ class GraphIngestionServiceIT extends AbstractNeo4jIT {
 
   private Long totalTransactionNode() {
     return neo4jClient
-        .query("MATCH (n:DocumentChunk|Document|Entity) RETURN count(n)")
+        .query("MATCH (n:DocumentChunk|Document|Node) RETURN count(n)")
         .fetchAs(Long.class)
         .one()
         .orElse(0L);

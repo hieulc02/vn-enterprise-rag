@@ -27,3 +27,6 @@ __pycache__/
 venv/
 .venv/
 env/
+
+#docker file
+**/.local_data/

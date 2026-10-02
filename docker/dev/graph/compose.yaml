@@ -1,7 +1,8 @@
 services:
   neo4j:
-    image: neo4j:${GRAPH_VERSION:-2026.07.1}
+    image: neo4j:${GRAPH_VERSION:-2026.09.0}
     container_name: neo4j-server
+    profiles: [ ingestion, retrieval ]
     env_file:
       - ../.env
     volumes:
@@ -11,10 +12,42 @@ services:
     environment:
       - NEO4J_AUTH=neo4j/${GRAPH_PASSWORD:-neo4jpassword}
       - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_server_memory_pagecache_size=64M
+      - NEO4J_server_memory_heap_initial__size=256M
+      - NEO4J_server_memory_heap_max__size=256M
     ports:
       - "7474:7474"
       - "7687:7687"
     restart: always
+
+  infinity-embedding:
+    image: michaelf34/infinity:latest-cpu
+    container_name: infinity_embedding
+    profiles: [ retrieval ]
+    ports:
+      - "8081:7997"
+    volumes:
+      - ../.local_data/hf_cache:/app/.cache
+    environment:
+      - HF_HOME=/app/.cache
+      - HF_HUB_DISABLE_XET=1
+    command:
+      - "v2"
+      - "--model-id"
+      - "AITeamVN/Vietnamese_Embedding"
+      - "--engine"
+      - "torch"
+      - "--batch-size"
+      - "2"
+      - "--port"
+      - "7997"
+      - "--model-warmup"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:7997/health" ]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+
 
 volumes:
   neo4j_data:

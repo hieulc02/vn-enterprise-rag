@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.hieulc.insightragingestion.base.AbstractNeo4jIT;
 import com.hieulc.insightragingestion.dto.DocumentChunk;
 import com.hieulc.insightragingestion.dto.Entity;
-import com.hieulc.insightragingestion.dto.Relationship;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -25,6 +24,8 @@ class GraphRepositoryIT extends AbstractNeo4jIT {
 
   @Autowired private Neo4jClient neo4jClient;
 
+  private final String docId = "test-document";
+
   @AfterEach
   void cleanDb() {
     neo4jClient.query("MATCH (n) DETACH DELETE n").run();
@@ -32,7 +33,6 @@ class GraphRepositoryIT extends AbstractNeo4jIT {
 
   @Test
   void shouldCreateDocumentAndMultipleChunksInSingleBatch() {
-    String docId = "test-document";
     var chunks = generateListChunks(docId, 2);
 
     repository.batchInsertChunks(docId, chunks);
@@ -57,7 +57,6 @@ class GraphRepositoryIT extends AbstractNeo4jIT {
 
   @Test
   void shouldBeIdempotent_WhenDoubleMergeWithTheSameChunk() {
-    String docId = "test-document";
     var chunk = createDefaultChunk("c1", docId);
 
     repository.batchInsertChunks(docId, List.of(chunk));
@@ -77,7 +76,6 @@ class GraphRepositoryIT extends AbstractNeo4jIT {
 
   @Test
   void shouldUpdateExistingChunk_WhenPropertiesChanged() {
-    String docId = "test-document";
     var initChunk = createChunk("c1", docId, "INIT-TEXT", 1);
     repository.batchInsertChunks(docId, List.of(initChunk));
 
@@ -92,7 +90,6 @@ class GraphRepositoryIT extends AbstractNeo4jIT {
 
   @Test
   void shouldFlattenChunkMetadata() {
-    String docId = "test-document";
     var chunk = createChunk("c2", docId, "FLATTEN-TEXT", 22);
     repository.batchInsertChunks(docId, List.of(chunk));
 
@@ -104,7 +101,6 @@ class GraphRepositoryIT extends AbstractNeo4jIT {
 
   @Test
   void shouldHandleNullChunkMetadataGracefully() {
-    String docId = "test-document";
     var chunk = new DocumentChunk("c3", "METADATA-EMPTY", null, 0, new float[] {});
     repository.batchInsertChunks(docId, List.of(chunk));
 
@@ -150,7 +146,7 @@ class GraphRepositoryIT extends AbstractNeo4jIT {
 
     repository.batchInsertEntities(List.of(updatedEntity));
 
-    long entityCount = countNode("Entity");
+    long entityCount = countNode("Node");
     assertThat(entityCount).isEqualTo(1L);
 
     @SuppressWarnings("unchecked")
@@ -164,34 +160,54 @@ class GraphRepositoryIT extends AbstractNeo4jIT {
   }
 
   @Test
+  void shouldInsertOrphanEntity_WithNullSourceChunk() {
+    var entity = createEntity("e3", null, null);
+    repository.batchInsertEntities(List.of(entity));
+
+    long entityCount = countNode("Node");
+    assertThat(entityCount).isEqualTo(1L);
+
+    long edgeCount = countEdge("EXTRACTED_FROM", "Node", "DocumentChunk");
+    assertThat(edgeCount).isEqualTo(0L);
+  }
+
+  @Test
+  void shouldNotOverrideEntityAliases_WhenUpdateEntityWithNullAlias() {
+    var baseAliases = List.of("Base Alias");
+    var entity = createEntity("e4", baseAliases, null);
+
+    repository.batchInsertEntities(List.of(entity));
+    var updatedEntity = createEntity("e4", null, null);
+    repository.batchInsertEntities(List.of(updatedEntity));
+
+    @SuppressWarnings("unchecked")
+    Map<String, Object> props = (Map<String, Object>) getEntityProperties("e4").get("props");
+
+    assertThat(props).containsEntry("aliases", baseAliases);
+  }
+
+  @Test
   void shouldCreateEntityEdgeLinkingWithDocumentChunk() {
     createDummyDocumentChunk("chunk-1");
     createDummyDocumentChunk("chunk-2");
 
-    var entity = createEntity("e1", null, Set.of("chunk-1", "chunk-2"));
+    var entity = createEntity("e5", null, Set.of("chunk-1", "chunk-2"));
     repository.batchInsertEntities(List.of(entity));
 
-    long edgeCount =
-        neo4jClient
-            .query(
-                "MATCH (e:Entity {id: 'e1'})-[r:EXTRACTED_FROM]->(c:DocumentChunk) RETURN count(r)")
-            .fetchAs(Long.class)
-            .one()
-            .orElse(0L);
+    long edgeCount = countEdge("EXTRACTED_FROM", "Node", "DocumentChunk");
 
     assertThat(edgeCount).isEqualTo(2L);
   }
 
   @Test
-  void returnNoEntityEdgeCreatedWhenSourceChunkIdsEmptyOrNull() {
+  void createNoEntityEdgeCreatedWhenSourceChunkIdsEmptyOrNull() {
 
-    var entityWithEmptyChunks = createEntity("e1", null, Set.of());
-    var entityWithNullChunks = createEntity("e2", null, null);
+    var entityWithEmptyChunks = createEntity("e6", null, Set.of());
+    var entityWithNullChunks = createEntity("e7", null, null);
 
     repository.batchInsertEntities(List.of(entityWithEmptyChunks, entityWithNullChunks));
 
-    long edgeCount = countRelationships("EXTRACTED_FROM");
-
+    long edgeCount = countEdge("EXTRACTED_FROM", "Node", "DocumentChunk");
     assertThat(edgeCount).isEqualTo(0L);
   }
 
@@ -207,8 +223,8 @@ class GraphRepositoryIT extends AbstractNeo4jIT {
 
     repository.batchInsertRelationship(List.of(rel1, rel2));
 
-    long relatedCount = countRelationships("RELATED_TO");
-    long componentCount = countRelationships("COMPONENT_OF");
+    long relatedCount = countEdge("RELATED_TO", "Node", "Node");
+    long componentCount = countEdge("COMPONENT_OF", "Node", "Node");
 
     assertThat(relatedCount).isEqualTo(1L);
     assertThat(componentCount).isEqualTo(1L);
@@ -221,15 +237,7 @@ class GraphRepositoryIT extends AbstractNeo4jIT {
     createDummyEntity("e2");
 
     var relationship =
-        new Relationship(
-            "rel-id",
-            "e1",
-            "e2",
-            "RELATED_TO",
-            "RELATIONSHIP-DES",
-            1.0,
-            Set.of("chunk-1", "chunk-2"),
-            Map.of("props", "value"));
+        createRelationship("e1", "e2", "RELATED_TO", Set.of("chunk-1", "chunk-2"), 1.0);
 
     repository.batchInsertRelationship(List.of(relationship));
 
@@ -238,7 +246,7 @@ class GraphRepositoryIT extends AbstractNeo4jIT {
         (Map<String, Object>) getRelationshipProperties("e1", "e2", "RELATED_TO").get("props");
 
     assertThat(props)
-        .containsEntry("description", "RELATIONSHIP-DES")
+        .containsEntry("description", "Default-Description")
         .containsEntry("weight", 1.0)
         .containsEntry("props", "value");
 
@@ -253,17 +261,19 @@ class GraphRepositoryIT extends AbstractNeo4jIT {
     createDummyEntity("e1");
     createDummyEntity("e2");
 
-    var initRelationship = createRelationship("e1", "e2", "RELATED_TO", null, 1.0);
+    var initRelationship = createRelationship("e1", "e2", "RELATED_TO", Set.of("chunk-1"), 1.0);
     repository.batchInsertRelationship(List.of(initRelationship));
     var updateRelationship = createRelationship("e1", "e2", "RELATED_TO", null, 0.9);
     repository.batchInsertRelationship(List.of(updateRelationship));
 
-    assertThat(countRelationships("RELATED_TO")).isEqualTo(1L);
+    assertThat(countEdge("RELATED_TO", "Node", "Node")).isEqualTo(1L);
 
     @SuppressWarnings("unchecked")
     Map<String, Object> props =
         (Map<String, Object>) getRelationshipProperties("e1", "e2", "RELATED_TO").get("props");
-    assertThat(props).containsEntry("weight", 0.9);
+    assertThat(props)
+        .containsEntry("weight", 0.9)
+        .containsEntry("source_chunk_ids", List.of("chunk-1"));
   }
 
   @Test
@@ -274,13 +284,12 @@ class GraphRepositoryIT extends AbstractNeo4jIT {
 
     repository.batchInsertRelationship(List.of(orphanRelationship));
 
-    long orphanCount = countRelationships("RELATED_TO");
+    long orphanCount = countEdge("RELATED_TO", "Node", "Node");
     assertThat(orphanCount).isEqualTo(0L);
   }
 
   @Test
-  void shouldLinkChunksInAscendingOrder() {
-    String docId = "test-document";
+  void shouldLinkChunksWithDocumentInAscendingOrder() {
     seedChunk(docId, "c1", 1);
     seedChunk(docId, "c3", 3);
     seedChunk(docId, "c2", 2);
@@ -289,26 +298,28 @@ class GraphRepositoryIT extends AbstractNeo4jIT {
     int chunkCount = repository.linkChunks(docId);
 
     assertThat(chunkCount).isEqualTo(4);
+    assertThat(countEdge("PART_OF", "DocumentChunk", "Document")).isEqualTo(chunkCount);
 
     assertThat(hasNextEdge("c1", "c2")).isEqualTo(true);
     assertThat(hasNextEdge("c2", "c3")).isEqualTo(true);
     assertThat(hasNextEdge("c3", "c4")).isEqualTo(true);
     assertThat(hasNextEdge("c4", "c1")).isEqualTo(false);
 
-    long edgeCount = countRelationships("NEXT");
+    long edgeCount = countEdge("NEXT", "DocumentChunk", "DocumentChunk");
     assertThat(edgeCount).isEqualTo(3L);
   }
 
   @Test
   void shouldBeIdempotent_WhenMergeDuplicateDocument() {
-    String docId = "test-document";
     seedChunk(docId, "c1", 1);
     seedChunk(docId, "c2", 2);
 
     repository.linkChunks(docId);
     repository.linkChunks(docId);
 
-    long edgeCount = countRelationships("NEXT");
+    long documentChunkCount = countEdge("PART_OF", "DocumentChunk", "Document");
+    assertThat(documentChunkCount).isEqualTo(2L);
+    long edgeCount = countEdge("NEXT", "DocumentChunk", "DocumentChunk");
     assertThat(edgeCount).isEqualTo(1L);
   }
 
@@ -316,24 +327,27 @@ class GraphRepositoryIT extends AbstractNeo4jIT {
   void shouldHandleNonExistingDocumentGracefully() {
     repository.linkChunks("non-existing-document");
 
-    long edgeCount = countRelationships("NEXT");
+    long documentChunkCount = countEdge("PART_OF", "DocumentChunk", "Document");
+    assertThat(documentChunkCount).isEqualTo(0);
+
+    long edgeCount = countEdge("NEXT", "DocumentChunk", "DocumentChunk");
     assertThat(edgeCount).isEqualTo(0);
   }
 
   @Test
   void shouldHandleSingleChunkGracefully() {
-    String docId = "test-document";
     seedChunk(docId, "c1", 1);
 
     int singleChunkCount = repository.linkChunks(docId);
 
-    assertThat(singleChunkCount).isEqualTo(0);
+    assertThat(singleChunkCount).isEqualTo(1);
     assertThat(hasNextEdge("c1", "c1")).isFalse();
-    assertThat(countRelationships("NEXT")).isEqualTo(0L);
+    assertThat(countEdge("PART_OF", "DocumentChunk", "Document")).isEqualTo(1);
+    assertThat(countEdge("NEXT", "DocumentChunk", "DocumentChunk")).isEqualTo(0L);
   }
 
   private void createDummyEntity(String id) {
-    neo4jClient.query("CREATE (:Entity {id: $id})").bind(id).to("id").run();
+    neo4jClient.query("CREATE (:Node {id: $id})").bind(id).to("id").run();
   }
 
   private void createDummyDocumentChunk(String chunkId) {
@@ -379,12 +393,20 @@ class GraphRepositoryIT extends AbstractNeo4jIT {
         .orElse(0L);
   }
 
-  private long countRelationships(String label) {
-    return neo4jClient
-        .query("MATCH ()-[r:" + label + "]->() RETURN count(r)")
-        .fetchAs(Long.class)
-        .one()
-        .orElse(0L);
+  private long countEdge(String edgeType, String from, String to) {
+    String srcLabel = formatLabel(from);
+    String dstLabel = formatLabel(to);
+    String query =
+        String.format("MATCH (%s)-[r:%s]->(%s) RETURN count(r)", srcLabel, edgeType, dstLabel);
+
+    return neo4jClient.query(query).fetchAs(Long.class).one().orElse(0L);
+  }
+
+  private String formatLabel(String label) {
+    if (label == null || label.isEmpty()) {
+      return "";
+    }
+    return ":`" + label + "`";
   }
 
   private Map<String, Object> getChunkProperties(String chunkId) {
@@ -399,7 +421,7 @@ class GraphRepositoryIT extends AbstractNeo4jIT {
 
   private Map<String, Object> getEntityProperties(String entityId) {
     return neo4jClient
-        .query("MATCH (e:Entity {id: $id}) RETURN properties(e) AS props")
+        .query("MATCH (e:Node {id: $id}) RETURN properties(e) AS props")
         .bind(entityId)
         .to("id")
         .fetch()
@@ -411,7 +433,7 @@ class GraphRepositoryIT extends AbstractNeo4jIT {
       String sourceId, String targetId, String type) {
     return neo4jClient
         .query(
-            "MATCH (:Entity {id: $srcId})-[r:%s]->(:Entity {id: $tgtId}) RETURN properties(r) as props"
+            "MATCH (:Node {id: $srcId})-[r:%s]->(:Node {id: $tgtId}) RETURN properties(r) as props"
                 .formatted(type))
         .bind(sourceId)
         .to("srcId")
