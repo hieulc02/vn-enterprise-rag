@@ -1,19 +1,21 @@
 package com.hieulc.insightragretrieval.service.chat;
 
+import static com.hieulc.insightragretrieval.config.properties.GenAiPropertiesFixtures.defaultGenAiProperties;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
 
-import com.hieulc.insightragretrieval.dto.ModelCapacity;
-import com.hieulc.insightragretrieval.dto.ModelCapacityInfo;
+import com.hieulc.insightragretrieval.config.properties.GenAiProperties;
 import com.hieulc.insightragretrieval.dto.chat.ChatRequestDto;
 import com.hieulc.insightragretrieval.dto.chat.PreparedChatPayload;
 import com.hieulc.insightragretrieval.dto.context.FusionResult;
+import com.hieulc.insightragretrieval.dto.model.ModelCapacity;
+import com.hieulc.insightragretrieval.dto.model.ModelCapacityInfo;
 import com.hieulc.insightragretrieval.exception.infras.TokenExceededLimitException;
-import com.hieulc.insightragretrieval.service.chat.model.ModelRegistry;
 import com.hieulc.insightragretrieval.service.chat.policy.HistoryEvictionPolicy;
 import com.hieulc.insightragretrieval.service.context.ContextFusionService;
+import com.hieulc.insightragretrieval.service.model.ModelRegistry;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
@@ -34,25 +36,28 @@ class ChatPayloadBuilderTest {
   @Mock private ContextFusionService contextFusionService;
   @Mock private TokenCountEstimator tokenCountEstimator;
   @Mock private HistoryEvictionPolicy historyEvictionPolicy;
+  @Mock private GenAiProperties genAiProperties;
 
   @InjectMocks private ChatPayloadBuilder chatPayloadBuilder;
-
-  private final String modelName = "gemini-3-pro-preview";
   private final SystemMessage systemMessage = SystemMessage.from("You are a Mock test AI.");
 
   @BeforeEach
   void setUp() {
-    ReflectionTestUtils.setField(chatPayloadBuilder, "modelName", modelName);
-    ReflectionTestUtils.setField(chatPayloadBuilder, "maxHistoryToken", 200);
-    ReflectionTestUtils.setField(chatPayloadBuilder, "userQueryLimitToken", 100);
     ReflectionTestUtils.setField(chatPayloadBuilder, "systemMessage", systemMessage);
   }
 
   @Test
   void prepare_returns_payload_containing_all_messages_within_token_limit() {
     ChatRequestDto request = createChatRequest();
-    when(modelRegistry.getModelCapacity(modelName))
-        .thenReturn(new ModelCapacity(modelName, new ModelCapacityInfo(200, 100)));
+
+    when(genAiProperties.queryLimitToken()).thenReturn(defaultGenAiProperties().queryLimitToken());
+    when(genAiProperties.modelMain()).thenReturn(defaultGenAiProperties().modelMain());
+    when(genAiProperties.maxHistoryToken()).thenReturn(defaultGenAiProperties().maxHistoryToken());
+
+    when(modelRegistry.getModelCapacity(defaultGenAiProperties().modelMain()))
+        .thenReturn(
+            new ModelCapacity(
+                defaultGenAiProperties().modelMain(), new ModelCapacityInfo(200, 100)));
     when(tokenCountEstimator.estimateTokenCountInMessage(any(ChatMessage.class))).thenReturn(20);
     when(tokenCountEstimator.estimateTokenCountInMessages(anyList())).thenReturn(40);
     when(tokenCountEstimator.estimateTokenCountInText(anyString())).thenReturn(10);
@@ -79,8 +84,14 @@ class ChatPayloadBuilderTest {
   void prepare_throws_exception_when_user_query_exceeded_token_limit() {
     ChatRequestDto request = createChatRequest();
 
-    when(modelRegistry.getModelCapacity(modelName))
-        .thenReturn(new ModelCapacity(modelName, new ModelCapacityInfo(200, 100)));
+    when(genAiProperties.queryLimitToken()).thenReturn(defaultGenAiProperties().queryLimitToken());
+    when(genAiProperties.modelMain()).thenReturn(defaultGenAiProperties().modelMain());
+    when(genAiProperties.maxHistoryToken()).thenReturn(defaultGenAiProperties().maxHistoryToken());
+
+    when(modelRegistry.getModelCapacity(defaultGenAiProperties().modelMain()))
+        .thenReturn(
+            new ModelCapacity(
+                defaultGenAiProperties().modelMain(), new ModelCapacityInfo(200, 100)));
     when(tokenCountEstimator.estimateTokenCountInMessage(any(ChatMessage.class))).thenReturn(20);
     when(tokenCountEstimator.estimateTokenCountInMessages(anyList())).thenReturn(40);
     when(tokenCountEstimator.estimateTokenCountInText(anyString())).thenReturn(101);

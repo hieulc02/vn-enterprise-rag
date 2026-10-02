@@ -1,4 +1,4 @@
-package com.hieulc.insightragretrieval.dto;
+package com.hieulc.insightragretrieval.dto.tokenizer;
 
 import com.hieulc.insightragretrieval.exception.infras.TokenExceededLimitException;
 

@@ -1,16 +1,15 @@
 package com.hieulc.insightragretrieval.service.chat.extractor;
 
-import com.hieulc.insightragretrieval.dto.QueryAnalysis;
+import com.hieulc.insightragretrieval.dto.query.QueryAnalysis;
 import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.UserMessage;
 
 public interface QueryAnalyzer {
   @SystemMessage(
       """
-  You are a backend query analyzer for knowledge graph retrieval pipeline.
-  Your job is to analyze the user's natural language question, extract keywords for fulltext search,
-  identify metadata filters, and rewrite the query to be optimal for vector embeddings.
-  Respond ONLY with the requested structured data.
+      You are a query preprocessor for a financial Graph RAG engine.
+      Analyze the input query and extract the required search parameters.
+      Respond ONLY with a valid JSON object matching the provided schema. Do not include markdown formatting or explanations.
   """)
   QueryAnalysis analyze(@UserMessage String userQuery);
 }

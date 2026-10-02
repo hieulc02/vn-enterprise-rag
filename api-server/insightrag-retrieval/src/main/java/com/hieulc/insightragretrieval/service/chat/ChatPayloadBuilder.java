@@ -1,12 +1,13 @@
 package com.hieulc.insightragretrieval.service.chat;
 
-import com.hieulc.insightragretrieval.dto.TokenBudget;
+import com.hieulc.insightragretrieval.config.properties.GenAiProperties;
 import com.hieulc.insightragretrieval.dto.chat.ChatRequestDto;
 import com.hieulc.insightragretrieval.dto.chat.PreparedChatPayload;
 import com.hieulc.insightragretrieval.dto.context.FusionResult;
-import com.hieulc.insightragretrieval.service.chat.model.ModelRegistry;
+import com.hieulc.insightragretrieval.dto.tokenizer.TokenBudget;
 import com.hieulc.insightragretrieval.service.chat.policy.HistoryEvictionPolicy;
 import com.hieulc.insightragretrieval.service.context.ContextFusionService;
+import com.hieulc.insightragretrieval.service.model.ModelRegistry;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
@@ -18,7 +19,6 @@ import dev.langchain4j.store.memory.chat.ChatMemoryStore;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -31,31 +31,26 @@ public class ChatPayloadBuilder {
   private final ContextFusionService contextFusionService;
   private final TokenCountEstimator tokenCountEstimator;
   private final HistoryEvictionPolicy historyEvictionPolicy;
-
-  @Value("${insightrag.ai.gemini.model-main}")
-  private String modelName;
-
-  @Value("${insightrag.ai.gemini.max-history-token}")
-  private int maxHistoryToken;
-
-  @Value("${insightrag.ai.gemini.query-limit-token}")
-  private int userQueryLimitToken;
+  private final GenAiProperties genAiProperties;
 
   private final SystemMessage systemMessage =
       SystemMessage.from(
           """
         You are InsightRAG, a forensic financial analyst and enterprise AI auditor.
-        Your primary directive is to answer the user's query with absolute precision, strictly using ONLY the data provided within the <context> XML tags.
+        Your primary directive is to answer the user's query with absolute precision, strictly synthesizing the provided data from <source_chunks>, <entities>, and <semantic_connections>.
+        Note that some of these XML tags may be empty depending on the query; rely only on the data present.
+
+        ### DATA SYNTHESIS PROTOCOL:
+        1. TEXT GROUNDING (<source_chunks>): Treat raw text chunks as primary evidence for verbatim rules, terms, and numerical data.
+        2. ANCHOR ENTITIES (<entities>): Use entity definitions and their <relationships> to understand entity attributes, roles, and directly connected neighborhood context.
+        3. GLOBAL CONNECTION (<semantic_connections>): Use these standalone relational paths to link entities across disparate documents when direct chunk text is absent.
 
         ### STRICT OPERATIONAL CONSTRAINTS:
-        1. ZERO HALLUCINATION: Answer strictly using ONLY the <context> XML tags. If the data is absent, state that you do not have enough information.
+        1. ZERO HALLUCINATION: Answer strictly using ONLY the provided XML tags, explicitly state you lack the information. Do not infer outside knowledge.
         2. NUMERICAL IMMUTABILITY: Never round numbers, alter decimal precision, or simplify currency scales.
         3. TEMPORAL ACCURACY: Preserve the distinction between fiscal/calendar years and actuals/forecasts.
         4. MANDATORY CITATION: Every factual claim must end with its exact source citation in brackets (e.g., [Source: SEC-10K, Page: 12]).
-        5. LANGUAGE PROTOCOL:
-           - Default language is Vietnamese. Always respond in Vietnamese unless explicitly prompted otherwise.
-           - If the user writes their query in English or another language, mirror the user's query language.
-           - Regardless of the language used, do NOT translate proper nouns, ticker symbols, financial acronyms, or metadata tags in citations.
+        5. LANGUAGE PROTOCOL: Mirror the user's query language (default to Vietnamese). Do NOT translate proper nouns, ticker symbols, financial acronyms, or metadata tags in citations.
        """);
 
   public PreparedChatPayload prepare(ChatRequestDto chatRequest) {
@@ -66,11 +61,14 @@ public class ChatPayloadBuilder {
 
     TokenBudget budget =
         TokenBudget.of(
-            modelRegistry.getModelCapacity(modelName).capacityInfo().inputTokenLimit(),
+            modelRegistry
+                .getModelCapacity(genAiProperties.modelMain())
+                .capacityInfo()
+                .inputTokenLimit(),
             tokenCountEstimator.estimateTokenCountInMessage(systemMessage),
             tokenCountEstimator.estimateTokenCountInMessages(history),
             tokenCountEstimator.estimateTokenCountInText(query),
-            userQueryLimitToken);
+            genAiProperties.queryLimitToken());
 
     FusionResult fusionResult = contextFusionService.fuse(query, budget.availableForContext());
     UserMessage enrichedPrompt = buildEnrichedPrompt(query, fusionResult.context());
@@ -84,8 +82,8 @@ public class ChatPayloadBuilder {
 
     List<ChatMessage> finalMessages = new ArrayList<>();
     finalMessages.add(systemMessage);
-    finalMessages.addAll(history);
     finalMessages.add(enrichedPrompt);
+    finalMessages.addAll(history);
 
     return new PreparedChatPayload(finalMessages, memory, query, chatRequest.sessionId());
   }
@@ -94,7 +92,7 @@ public class ChatPayloadBuilder {
     return TokenWindowChatMemory.builder()
         .id(sessionId)
         .chatMemoryStore(chatMemoryStore)
-        .maxTokens(maxHistoryToken, tokenCountEstimator)
+        .maxTokens(genAiProperties.maxHistoryToken(), tokenCountEstimator)
         .build();
   }
 

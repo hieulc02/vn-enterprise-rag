@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import ac.simons.neo4j.migrations.core.Migrations;
 import ac.simons.neo4j.migrations.springframework.boot.autoconfigure.MigrationsAutoConfiguration;
 import com.hieulc.insightragretrieval.base.AbstractNeo4jIT;
-import com.hieulc.insightragretrieval.config.CypherDslConfig;
+import com.hieulc.insightragretrieval.config.properties.GraphSearchProperties;
 import com.hieulc.insightragretrieval.dto.context.*;
 import java.util.Arrays;
 import java.util.List;
@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.data.neo4j.test.autoconfigure.DataNeo4jTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.core.io.Resource;
@@ -26,14 +27,16 @@ import org.springframework.transaction.annotation.Transactional;
 
 @DataNeo4jTest
 @ActiveProfiles("test")
-@Import({CypherDslConfig.class, GraphRepositoryImpl.class})
+@Import({GraphRepositoryImpl.class, GraphContextMapper.class})
+@EnableConfigurationProperties(GraphSearchProperties.class)
 @ImportAutoConfiguration(MigrationsAutoConfiguration.class)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class GraphRepositoryImplIT extends AbstractNeo4jIT {
 
   @Autowired private GraphCustomRepository repository;
-
   @Autowired private Neo4jClient neo4jClient;
+  @Autowired private GraphContextMapper rowMapper;
+  @Autowired private GraphSearchProperties graphSearchProperties;
 
   @Value("${app.test.neo4j.test-fixtures}")
   private Resource seedDataCypher;
@@ -44,7 +47,7 @@ class GraphRepositoryImplIT extends AbstractNeo4jIT {
   void setUp() throws Exception {
     migrations.apply();
     neo4jClient.query(resourceToString(seedDataCypher)).run();
-    neo4jClient.query("CALL db.awaitIndexes(30)").run();
+    neo4jClient.query("CALL db.awaitIndexes(10)").run();
   }
 
   @AfterEach
@@ -53,8 +56,8 @@ class GraphRepositoryImplIT extends AbstractNeo4jIT {
   }
 
   @Test
-  void searchChunkFulltext_ReturnAndMapPropertiesCorrectlyAndHandleLinkedEntities() {
-    float[] vector = generateDummyVector(-0.3f);
+  void searchChunksHybrid_aggregates_chunk_context_by_keyword_with_non_related_vector() {
+    float[] vector = generateDummyVector(-0.5f);
     List<DocumentChunkContext> results = repository.searchChunksHybrid(vector, "Entity", 1);
 
     assertThat(results).isNotEmpty();
@@ -65,11 +68,10 @@ class GraphRepositoryImplIT extends AbstractNeo4jIT {
     assertThat(chunkContext.text()).isEqualTo("Chunk text is an Object and Entity");
     assertThat(chunkContext.metadata().documentId()).isEqualTo("test-document");
     assertThat(chunkContext.metadata().pageNumber()).isEqualTo(1);
-    assertThat(chunkContext.linkedEntities()).contains("node-1");
   }
 
   @Test
-  void searchChunkVector_ReturnAndMapPropertiesCorrectlyAndHandleLinkedEntities() {
+  void searchChunksHybrid_aggregates_chunk_context_by_vector_with_non_related_keyword() {
     float[] vector = generateDummyVector(0.1f);
     List<DocumentChunkContext> results =
         repository.searchChunksHybrid(vector, "non-exists-keyword", 1);
@@ -82,11 +84,10 @@ class GraphRepositoryImplIT extends AbstractNeo4jIT {
     assertThat(chunkContext.text()).isEqualTo("Chunk text is an Object and Entity");
     assertThat(chunkContext.metadata().documentId()).isEqualTo("test-document");
     assertThat(chunkContext.metadata().pageNumber()).isEqualTo(1);
-    assertThat(chunkContext.linkedEntities()).contains("node-1");
   }
 
   @Test
-  void searchNodeFulltext_HandleMultiHopInCorrectOrderAndStripEmbeddings() {
+  void searchNodeHybrid_aggregates_node_context_by_keyword_with_non_related_vector() {
     float[] vector = generateDummyVector(-0.3f);
     List<DocumentNodeContext> results = repository.searchNodeHybrid(vector, "Entity", 1);
 
@@ -99,33 +100,41 @@ class GraphRepositoryImplIT extends AbstractNeo4jIT {
     assertThat(documentNode.id()).isEqualTo("node-1");
     assertThat(documentNode.title()).isEqualTo("Entity-1");
     assertThat(documentNode.labels().containsAll(List.of("Node", "Entity")));
-    assertThat(documentNode.properties()).doesNotContainKeys("embedding", "title", "id");
+    assertThat(documentNode.properties()).containsKeys("embedding", "title", "id");
 
-    assertThat(nodeContext.structuralPaths()).hasSize(2);
-    List<DocumentNode> nodeObs = nodeContext.structuralPaths().getFirst().nodes();
-    assertThat(nodeObs).hasSize(3);
-    assertThat(nodeObs.get(0).labels()).contains("Entity");
-    assertThat(nodeObs.get(1).labels()).contains("Subject");
-    assertThat(nodeObs.get(2).labels()).contains("Observation");
+    assertThat(nodeContext.relatedEntities()).hasSize(2);
+    DocumentNodeContext.RelatedNodesContext firstConnection =
+        nodeContext.relatedEntities().getFirst();
+    assertThat(firstConnection.source().id()).isEqualTo("node-1");
+    assertThat(firstConnection.source().title()).isEqualTo("Entity-1");
+    assertThat(firstConnection.edge().edgeType()).isEqualTo("HAS_OBSERVATION");
+    assertThat(firstConnection.target().id()).isEqualTo("obs-2");
+    assertThat(firstConnection.target().title()).isNull();
+    assertThat(firstConnection.target().labels()).contains("Observation");
+    assertThat(firstConnection.target().properties())
+        .containsEntry("value", "prop")
+        .containsEntry("is_numeric", false);
 
-    List<NodeEdge> edgesToObs = nodeContext.structuralPaths().getFirst().edges();
-    assertThat(edgesToObs).hasSize(2);
-    assertThat(edgesToObs.get(0).edgeType()).contains("COMPONENT_OF");
-    assertThat(edgesToObs.get(1).edgeType()).contains("HAS_OBSERVATION");
+    DocumentNodeContext.RelatedNodesContext lastConnection =
+        nodeContext.relatedEntities().getLast();
+    assertThat(lastConnection.source().id()).isEqualTo("node-1");
+    assertThat(lastConnection.source().title()).isEqualTo("Entity-1");
+    assertThat(lastConnection.edge().edgeType()).isEqualTo("COMPONENT_OF");
+    assertThat(lastConnection.target().id()).isEqualTo("node-2");
+    assertThat(lastConnection.target().title()).isEqualTo("Subject-1");
+    assertThat(lastConnection.target().labels()).contains("Subject");
 
-    List<DocumentNode> nodeSubject = nodeContext.structuralPaths().getLast().nodes();
-    assertThat(nodeSubject).hasSize(2);
-    assertThat(nodeSubject.get(0).labels()).contains("Entity");
-    assertThat(nodeSubject.get(1).labels()).contains("Subject");
-
-    List<NodeEdge> edgesToSub = nodeContext.structuralPaths().getLast().edges();
-    assertThat(edgesToSub).hasSize(1);
-    assertThat(edgesToSub.getFirst().edgeType()).contains("COMPONENT_OF");
+    assertThat(nodeContext.sourceChunks()).hasSize(1);
+    DocumentChunkContext chunkContext = nodeContext.sourceChunks().getFirst();
+    assertThat(chunkContext.chunkId()).isEqualTo("c1");
+    assertThat(chunkContext.text()).isEqualTo("");
+    assertThat(chunkContext.metadata().documentId()).isEqualTo("test-document");
+    assertThat(chunkContext.metadata().pageNumber()).isEqualTo(1);
   }
 
   @Test
-  void searchNodeVector_HandleMultiHopInCorrectOrderAndStripEmbeddings() {
-    float[] vector = generateDummyVector(0.1f);
+  void searchNodeHybrid_aggregates_node_context_by_vector_with_non_related_keyword() {
+    float[] vector = generateDummyVector(-0.3f);
     List<DocumentNodeContext> results =
         repository.searchNodeHybrid(vector, "non-exists-keyword", 1);
 
@@ -135,35 +144,44 @@ class GraphRepositoryImplIT extends AbstractNeo4jIT {
 
     DocumentNode documentNode = nodeContext.documentNode();
 
-    assertThat(documentNode.id()).isEqualTo("node-1");
-    assertThat(documentNode.title()).isEqualTo("Entity-1");
-    assertThat(documentNode.labels().containsAll(List.of("Node", "Entity")));
-    assertThat(documentNode.properties()).doesNotContainKeys("embedding", "title", "id");
+    assertThat(documentNode.id()).isEqualTo("node-2");
+    assertThat(documentNode.title()).isEqualTo("Subject-1");
+    assertThat(documentNode.labels().containsAll(List.of("Node", "Subject")));
 
-    assertThat(nodeContext.structuralPaths()).hasSize(2);
-    List<DocumentNode> nodeObs = nodeContext.structuralPaths().getFirst().nodes();
-    assertThat(nodeObs).hasSize(3);
-    assertThat(nodeObs.get(0).labels()).contains("Entity");
-    assertThat(nodeObs.get(1).labels()).contains("Subject");
-    assertThat(nodeObs.get(2).labels()).contains("Observation");
+    assertThat(nodeContext.relatedEntities()).hasSize(2);
 
-    List<NodeEdge> edgesToObs = nodeContext.structuralPaths().getFirst().edges();
-    assertThat(edgesToObs).hasSize(2);
-    assertThat(edgesToObs.get(0).edgeType()).contains("COMPONENT_OF");
-    assertThat(edgesToObs.get(1).edgeType()).contains("HAS_OBSERVATION");
+    DocumentNodeContext.RelatedNodesContext firstConnection =
+        nodeContext.relatedEntities().getFirst();
+    assertThat(firstConnection.source().id()).isEqualTo("node-2");
+    assertThat(firstConnection.source().title()).isEqualTo("Subject-1");
+    assertThat(firstConnection.edge().edgeType()).isEqualTo("HAS_OBSERVATION");
+    assertThat(firstConnection.target().id()).isEqualTo("obs-1");
+    assertThat(firstConnection.target().title()).isNull();
+    assertThat(firstConnection.target().labels()).contains("Observation");
+    assertThat(firstConnection.target().properties())
+        .containsEntry("value", 123.0)
+        .containsEntry("is_numeric", true);
 
-    List<DocumentNode> nodeSubject = nodeContext.structuralPaths().getLast().nodes();
-    assertThat(nodeSubject).hasSize(2);
-    assertThat(nodeSubject.get(0).labels()).contains("Entity");
-    assertThat(nodeSubject.get(1).labels()).contains("Subject");
+    DocumentNodeContext.RelatedNodesContext lastConnection =
+        nodeContext.relatedEntities().getLast();
+    assertThat(lastConnection.source().id()).isEqualTo("node-1");
+    assertThat(lastConnection.source().title()).isEqualTo("Entity-1");
+    assertThat(lastConnection.edge().edgeType()).isEqualTo("COMPONENT_OF");
+    assertThat(lastConnection.target().id()).isEqualTo("node-2");
+    assertThat(lastConnection.target().title()).isEqualTo("Subject-1");
+    assertThat(lastConnection.target().labels()).contains("Subject");
 
-    List<NodeEdge> edgesToSub = nodeContext.structuralPaths().getLast().edges();
-    assertThat(edgesToSub).hasSize(1);
-    assertThat(edgesToSub.getFirst().edgeType()).contains("COMPONENT_OF");
+    assertThat(nodeContext.sourceChunks()).hasSize(1);
+    DocumentChunkContext chunkContext = nodeContext.sourceChunks().getFirst();
+    assertThat(chunkContext.chunkId()).isEqualTo("c2");
+    assertThat(chunkContext.text()).isEqualTo("");
+    assertThat(chunkContext.metadata().documentId()).isEqualTo("test-document");
+    assertThat(chunkContext.metadata().pageNumber()).isEqualTo(2);
   }
 
   @Test
-  void searchRelationshipSemantic_YieldAndMapPropertiesWithMultiHop() {
+  void
+      searchRelationshipSemantic_aggregates_relationship_context_by_vector_search_within_threshold() {
     float[] vector = generateDummyVector(0.1f);
     List<DocumentRelationshipContext> results = repository.searchRelationshipSemantic(vector, 1);
 
@@ -175,22 +193,15 @@ class GraphRepositoryImplIT extends AbstractNeo4jIT {
     assertThat(relationshipContext.nodeEdge().edgeDesc())
         .contains("Subject is a component of Entity");
 
-    assertThat(relationshipContext.sourceNode().nodeMetadata().id()).isEqualTo("node-2");
-    assertThat(relationshipContext.sourceNode().nodeMetadata().labels()).contains("Subject");
-    assertThat(relationshipContext.sourceNode().nodeMetadata().properties())
-        .doesNotContainKeys("embedding", "title", "id");
+    assertThat(relationshipContext.sourceNode().id()).isEqualTo("node-2");
+    assertThat(relationshipContext.sourceNode().labels()).contains("Subject");
 
-    assertThat(relationshipContext.sourceNode().obsPropsList()).hasSize(1);
-    assertThat(relationshipContext.sourceNode().obsPropsList().getFirst())
-        .containsEntry("value", 123.0);
-
-    assertThat(relationshipContext.targetNode().nodeMetadata().id()).isEqualTo("node-1");
-    assertThat(relationshipContext.targetNode().nodeMetadata().title()).contains("Entity");
-    assertThat(relationshipContext.targetNode().obsPropsList()).isEmpty();
+    assertThat(relationshipContext.targetNode().id()).isEqualTo("node-1");
+    assertThat(relationshipContext.targetNode().labels()).contains("Entity");
   }
 
   @Test
-  void searchRelationshipSemantic_YieldNoRelationship_WhenSimilarityScoreBelowThreshold() {
+  void searchRelationshipSemantic_empty_result_when_threshold_exceeded() {
     float[] vector = generateDummyVector(-0.2f);
     List<DocumentRelationshipContext> results = repository.searchRelationshipSemantic(vector, 2);
     assertThat(results).isEmpty();

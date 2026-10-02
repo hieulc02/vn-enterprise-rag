@@ -31,7 +31,7 @@ class ChatServiceImplTest {
   @Mock private ChatStreamCallback callback;
   @Mock private ChatMemory chatMemoryMock;
   @Captor private ArgumentCaptor<StreamingChatResponseHandler> handlerCaptor;
-  @Spy @InjectMocks private ChatServiceImpl chatService;
+  @InjectMocks private ChatServiceImpl chatService;
 
   @Test
   void chat_returns_text_response_and_save_memory() {
@@ -44,9 +44,9 @@ class ChatServiceImplTest {
     ChatResponse chatResponse = ChatResponse.builder().aiMessage(aiResponse).build();
     when(chatModel.chat(any(ChatRequest.class))).thenReturn(chatResponse);
 
-    chatService.chat(request);
+    String response = chatService.chat(request);
 
-    assertThat(chatResponse.aiMessage().text()).isEqualTo("Sync response.");
+    assertThat(response).isEqualTo("Sync response.");
     verify(chatMemoryMock).add(any(UserMessage.class));
     verify(chatMemoryMock).add(aiResponse);
   }

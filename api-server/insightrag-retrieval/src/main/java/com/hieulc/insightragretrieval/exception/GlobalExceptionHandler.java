@@ -2,6 +2,7 @@ package com.hieulc.insightragretrieval.exception;
 
 import com.hieulc.insightragretrieval.exception.appli.InsufficientContextException;
 import com.hieulc.insightragretrieval.exception.infras.AiContentGenerateException;
+import com.hieulc.insightragretrieval.exception.infras.EmbeddingClientException;
 import com.hieulc.insightragretrieval.exception.infras.TokenExceededLimitException;
 import java.util.HashMap;
 import java.util.Map;
@@ -38,6 +39,14 @@ public class GlobalExceptionHandler {
     ProblemDetail problemDetail =
         ProblemDetail.forStatusAndDetail(HttpStatus.BAD_GATEWAY, ex.getMessage());
     problemDetail.setTitle("Ai Content Generation Failed");
+    return problemDetail;
+  }
+
+  @ExceptionHandler(EmbeddingClientException.class)
+  public ProblemDetail handleEmbeddingClientException(EmbeddingClientException ex) {
+    ProblemDetail problemDetail =
+        ProblemDetail.forStatusAndDetail(HttpStatus.BAD_GATEWAY, ex.getMessage());
+    problemDetail.setTitle("Embedding Client Generation Failed");
     return problemDetail;
   }
 

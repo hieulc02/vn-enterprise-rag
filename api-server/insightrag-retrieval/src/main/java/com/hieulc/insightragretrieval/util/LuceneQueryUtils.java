@@ -29,6 +29,7 @@ public final class LuceneQueryUtils {
         .map(String::trim)
         .filter(k -> !k.isEmpty())
         .map(LuceneQueryUtils::escapeLucene)
+        .map(kw -> "\"" + kw + "\"")
         .collect(Collectors.joining(" " + operator + " "));
   }
 

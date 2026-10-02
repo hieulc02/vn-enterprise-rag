@@ -1,21 +1,24 @@
 package com.hieulc.insightragretrieval.service.context;
 
+import static com.hieulc.insightragretrieval.service.context.GraphContextFormatter.*;
 import static com.hieulc.insightragretrieval.util.LuceneQueryUtils.toOrQuery;
 
-import com.hieulc.insightragretrieval.dto.QueryAnalysis;
+import com.hieulc.insightragretrieval.config.properties.ContextFusionProperties;
 import com.hieulc.insightragretrieval.dto.context.*;
+import com.hieulc.insightragretrieval.dto.query.QueryPreparation;
 import com.hieulc.insightragretrieval.exception.appli.InsufficientContextException;
+import com.hieulc.insightragretrieval.exception.infras.TokenExceededLimitException;
 import com.hieulc.insightragretrieval.repository.GraphCustomRepository;
-import com.hieulc.insightragretrieval.service.chat.extractor.QueryAnalyzer;
+import com.hieulc.insightragretrieval.service.chat.cache.CachedQueryPreparationService;
 import dev.langchain4j.model.TokenCountEstimator;
-import dev.langchain4j.model.embedding.EmbeddingModel;
-import java.util.LinkedHashMap;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
+import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.task.AsyncTaskExecutor;
@@ -29,46 +32,44 @@ public class ContextFusionServiceImpl implements ContextFusionService {
   private final GraphCustomRepository graphRepository;
   private final TokenCountEstimator tokenCountEstimator;
   private final AsyncTaskExecutor virtualExecutor;
-  private final QueryAnalyzer queryAnalyzer;
-  private final EmbeddingModel embeddingModel;
+  private final CachedQueryPreparationService preparationService;
+
+  private final ContextFusionProperties contextFusionProperties;
 
   @Override
   public FusionResult fuse(String query, int maxContextToken) {
-    QueryAnalysis analysis = queryAnalyzer.analyze(query);
-    float[] vector = embeddingModel.embed(analysis.optimizedVectorQuery()).content().vector();
-    return fuseContext(vector, toOrQuery(analysis.extractKeyword()), maxContextToken);
+    QueryPreparation preparedQuery = preparationService.prepare(query);
+    String keywordQuery = toOrQuery(preparedQuery.analysis().extractKeyword());
+    ContextFusionProperties.StrategyLimits limits = contextFusionProperties.getActiveLimits();
+    return fuseContext(preparedQuery, keywordQuery, limits, maxContextToken);
   }
 
-  private FusionResult fuseContext(float[] vector, String keyword, int maxContextToken) {
+  private FusionResult fuseContext(
+      QueryPreparation preparedQuery,
+      String keyword,
+      ContextFusionProperties.StrategyLimits limits,
+      int maxContextToken) {
+
     CompletableFuture<List<DocumentChunkContext>> chunksFuture =
-        CompletableFuture.supplyAsync(
-                () -> graphRepository.searchChunksHybrid(vector, keyword, 3), virtualExecutor)
-            .orTimeout(10, TimeUnit.SECONDS)
-            .exceptionally(
-                e -> {
-                  log.error("Chunk query failed: {}", e.getMessage());
-                  return List.of();
-                });
+        fetchAsync(
+            () ->
+                graphRepository.searchChunksHybrid(
+                    preparedQuery.vector(), keyword, limits.chunkLimit()),
+            "Document chunks retrieval");
 
     CompletableFuture<List<DocumentNodeContext>> nodesFuture =
-        CompletableFuture.supplyAsync(
-                () -> graphRepository.searchNodeHybrid(vector, keyword, 5), virtualExecutor)
-            .orTimeout(10, TimeUnit.SECONDS)
-            .exceptionally(
-                e -> {
-                  log.error("Node query failed: {}", e.getMessage());
-                  return List.of();
-                });
+        fetchAsync(
+            () ->
+                graphRepository.searchNodeHybrid(
+                    preparedQuery.vector(), keyword, limits.nodeLimit()),
+            "Graph nodes retrieval");
 
     CompletableFuture<List<DocumentRelationshipContext>> edgesFuture =
-        CompletableFuture.supplyAsync(
-                () -> graphRepository.searchRelationshipSemantic(vector, 5), virtualExecutor)
-            .orTimeout(10, TimeUnit.SECONDS)
-            .exceptionally(
-                e -> {
-                  log.error("Relationship query failed: {}", e.getMessage());
-                  return List.of();
-                });
+        fetchAsync(
+            () ->
+                graphRepository.searchRelationshipSemantic(
+                    preparedQuery.vector(), limits.relationshipLimit()),
+            "Graph relationships retrieval");
 
     CompletableFuture.allOf(chunksFuture, nodesFuture, edgesFuture).join();
 
@@ -90,156 +91,88 @@ public class ContextFusionServiceImpl implements ContextFusionService {
       List<DocumentRelationshipContext> edges,
       int maxContextToken) {
 
-    StringBuilder context = new StringBuilder();
+    StringBuilder graphContext = new StringBuilder();
     int currentToken = 0;
 
-    for (DocumentChunkContext chunk : chunks) {
-      String chunkContext = buildChunkContext(chunk);
-      int tokens = countToken(chunkContext);
-      if (currentToken + tokens > maxContextToken) {
-        return new FusionResult(context.toString(), currentToken);
-      }
-      context.append(chunkContext);
-      currentToken += tokens;
-    }
+    Set<String> seenContext = new HashSet<>();
 
-    for (DocumentRelationshipContext edge : edges) {
-      String edgeContext = buildEdgeContext(edge);
-      int tokens = countToken(edgeContext);
-      if (currentToken + tokens > maxContextToken) {
-        return new FusionResult(context.toString(), currentToken);
-      }
-      context.append(edgeContext);
-      currentToken += tokens;
-    }
+    if (!chunks.isEmpty()) {
+      StringBuilder chunkBlock = new StringBuilder();
+      for (DocumentChunkContext chunk : chunks) {
+        if (!seenContext.add("chunk:" + chunk.chunkId())) continue;
 
-    Map<String, String> uniqueNodes = new LinkedHashMap<>();
-
-    for (DocumentNodeContext node : nodes) {
-      if (node.structuralPaths().isEmpty()) {
-        uniqueNodes.putIfAbsent(
-            node.documentNode().id(), buildNodeContext(node.documentNode(), List.of(), List.of()));
-        continue;
+        String text = formatChunkContext(chunk);
+        int tokens = countToken(text);
+        if (currentToken + tokens > maxContextToken) {
+          throw new TokenExceededLimitException("Document chunk exceed LLM token limit");
+        }
+        chunkBlock.append(text);
+        currentToken += tokens;
       }
-      for (DocumentNodeContext.StructuralPath path : node.structuralPaths()) {
-        String mapId = buildMapId(node.documentNode(), path.edges());
-        uniqueNodes.putIfAbsent(
-            mapId, buildNodeContext(node.documentNode(), path.nodes(), path.edges()));
+      if (!chunkBlock.isEmpty()) {
+        graphContext.append(" <source_chunks>\n").append(chunkBlock).append(" </source_chunks>\n");
       }
     }
 
-    for (DocumentRelationshipContext edge : edges) {
-      List<NodeEdge> obsEdge = List.of(new NodeEdge("HAS_OBSERVATION", null));
-      String sourceMapId = buildMapId(edge.sourceNode().nodeMetadata(), obsEdge);
-      uniqueNodes.putIfAbsent(
-          sourceMapId,
-          buildNodeContext(
-              edge.sourceNode().nodeMetadata(),
-              List.of(edge.sourceNode().nodeMetadata()),
-              obsEdge));
+    if (!nodes.isEmpty()) {
+      StringBuilder nodeBlock = new StringBuilder();
+      for (DocumentNodeContext node : nodes) {
+        if (!seenContext.add("node:" + node.documentNode().id())) continue;
 
-      String targetMapId = buildMapId(edge.targetNode().nodeMetadata(), obsEdge);
-      uniqueNodes.putIfAbsent(
-          targetMapId,
-          buildNodeContext(
-              edge.targetNode().nodeMetadata(),
-              List.of(edge.targetNode().nodeMetadata()),
-              obsEdge));
-    }
-
-    for (String nodeContext : uniqueNodes.values()) {
-      int tokens = countToken(nodeContext);
-      if (currentToken + tokens > maxContextToken) {
-        return new FusionResult(context.toString(), currentToken);
+        String text = formatNodeContext(node);
+        int tokens = countToken(text);
+        if (currentToken + tokens > maxContextToken) {
+          return new FusionResult(graphContext.toString(), currentToken);
+        }
+        nodeBlock.append(text);
+        currentToken += tokens;
       }
-      context.append(nodeContext);
-      currentToken += tokens;
+      if (!nodeBlock.isEmpty()) {
+        graphContext.append(" <entities>\n").append(nodeBlock).append(" </entities>\n");
+      }
     }
 
-    return new FusionResult(context.toString(), currentToken);
+    if (!edges.isEmpty()) {
+      StringBuilder edgeBlock = new StringBuilder();
+      for (DocumentRelationshipContext edge : edges) {
+        String edgeKey =
+            "edge:"
+                + edge.sourceNode().id()
+                + "|"
+                + edge.nodeEdge().edgeType()
+                + "|"
+                + edge.targetNode().id();
+        if (!seenContext.add(edgeKey)) continue;
+        String text = formatRelationshipContext(edge);
+
+        int tokens = countToken(text);
+        if (currentToken + tokens > maxContextToken) {
+          return new FusionResult(graphContext.toString(), currentToken);
+        }
+        edgeBlock.append(text);
+        currentToken += tokens;
+      }
+
+      if (!edgeBlock.isEmpty()) {
+        graphContext
+            .append(" <semantic_connections>\n")
+            .append(edgeBlock)
+            .append(" </semantic_connections>\n");
+      }
+    }
+
+    return new FusionResult(graphContext.toString(), currentToken);
   }
 
-  private String buildChunkContext(DocumentChunkContext chunk) {
-    return "<chunks>\n"
-        + chunk.text()
-        + "\n"
-        + "Source: "
-        + chunk.metadata().documentId()
-        + " Pages: "
-        + chunk.metadata().pageNumber()
-        + "</chunks>\n";
-  }
-
-  private String buildEdgeContext(DocumentRelationshipContext edge) {
-    return "<graph_relationships>\n"
-        + edge.sourceNode().nodeMetadata().title()
-        + buildNodeProps(edge.sourceNode().nodeMetadata().properties())
-        + " -["
-        + edge.nodeEdge().edgeType()
-        + ":"
-        + edge.nodeEdge().edgeDesc()
-        + "]"
-        + "-> "
-        + edge.targetNode().nodeMetadata().title()
-        + buildNodeProps(edge.targetNode().nodeMetadata().properties())
-        + "</graph_relationships>\n";
-  }
-
-  private String buildMapId(DocumentNode node, List<NodeEdge> edges) {
-    StringBuilder idSb = new StringBuilder();
-    idSb.append(node.id());
-    edges.stream()
-        .filter(Objects::nonNull)
-        .forEach(edge -> idSb.append(":").append(edge.edgeType()));
-    return idSb.toString();
-  }
-
-  private String buildNodeContext(
-      DocumentNode sourceNode, List<DocumentNode> targetNodes, List<NodeEdge> edges) {
-    StringBuilder context = new StringBuilder();
-    context
-        .append("<graph_entities>\n")
-        .append(sourceNode.title())
-        .append(buildNodeProps(sourceNode.properties()))
-        .append("\n");
-
-    if (targetNodes == null || edges.isEmpty()) {
-      context.append("</graph_entities>\n");
-      return context.toString();
-    }
-
-    context.append("Path: ");
-    context
-        .append(targetNodes.getFirst().title())
-        .append(" -[")
-        .append(edges.getFirst().edgeType())
-        .append("]");
-    for (int i = 1; i < targetNodes.size(); i++) {
-      context
-          .append("-> ")
-          .append(targetNodes.get(i).title())
-          .append(buildNodeProps(targetNodes.get(i).properties()));
-
-      if (i < edges.size() && edges.get(i) != null) {
-        context.append(" -[").append(edges.get(i).edgeType()).append("]");
-      }
-    }
-    context.append("</graph_entities>\n");
-    return context.toString();
-  }
-
-  private String buildNodeProps(Map<String, Object> props) {
-    if (props == null || props.isEmpty()) {
-      return "{}";
-    }
-
-    String stringProps =
-        props.entrySet().stream()
-            .filter(entry -> !"embedding".equals(entry.getKey()))
-            .map(entry -> entry.getKey() + ": " + entry.getValue())
-            .collect(Collectors.joining(", "));
-
-    return "{" + stringProps + "}";
+  private <T> CompletableFuture<List<T>> fetchAsync(Supplier<List<T>> supplier, String taskName) {
+    return CompletableFuture.supplyAsync(supplier, virtualExecutor)
+        .orTimeout(contextFusionProperties.retrievalTimeoutSeconds(), TimeUnit.SECONDS)
+        .exceptionally(
+            e -> {
+              Throwable cause = (e instanceof CompletionException) ? e.getCause() : e;
+              log.error("{} failed", taskName, cause);
+              return Collections.emptyList();
+            });
   }
 
   private int countToken(String text) {

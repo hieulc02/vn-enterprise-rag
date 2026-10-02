@@ -2,29 +2,27 @@ package com.hieulc.insightragretrieval.config;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.hieulc.insightragretrieval.config.properties.GenAiProperties;
 import dev.langchain4j.data.message.ChatMessage;
 import java.time.Duration;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
+@RequiredArgsConstructor
 @Slf4j
 public class ChatCacheConfig {
 
-  @Value("${insightrag.ai.gemini.memory.max-session}")
-  private long maxSessions;
-
-  @Value("${insightrag.ai.gemini.memory.ttl-minutes}")
-  private long ttlMinutes;
+  private final GenAiProperties genAiProperties;
 
   @Bean
   public Cache<Object, List<ChatMessage>> cache() {
     return Caffeine.newBuilder()
-        .maximumSize(maxSessions)
-        .expireAfterAccess(Duration.ofMinutes(ttlMinutes))
+        .maximumSize(genAiProperties.memory().maxSession())
+        .expireAfterAccess(Duration.ofMinutes(genAiProperties.memory().ttlMinutes()))
         .recordStats()
         .removalListener(
             (key, value, cause) -> {
@@ -34,5 +32,4 @@ public class ChatCacheConfig {
             })
         .build();
   }
-
 }

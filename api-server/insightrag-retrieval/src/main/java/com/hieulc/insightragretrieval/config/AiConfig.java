@@ -1,5 +1,6 @@
 package com.hieulc.insightragretrieval.config;
 
+import com.hieulc.insightragretrieval.config.properties.GenAiProperties;
 import com.hieulc.insightragretrieval.service.chat.extractor.QueryAnalyzer;
 import com.hieulc.insightragretrieval.service.tokenizer.GeminiTokenEstimatorAdapter;
 import dev.langchain4j.model.TokenCountEstimator;
@@ -9,8 +10,8 @@ import dev.langchain4j.model.google.genai.GoogleGenAiChatModel;
 import dev.langchain4j.model.google.genai.GoogleGenAiStreamingChatModel;
 import dev.langchain4j.service.AiServices;
 import java.time.Duration;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
@@ -18,34 +19,22 @@ import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 @Configuration
+@RequiredArgsConstructor
 public class AiConfig {
 
-  @Value("${insightrag.ai.gemini.model-main}")
-  private String modelName;
-
-  @Value("${insightrag.ai.gemini.model-lite}")
-  private String liteModelName;
-
-  @Value("${insightrag.ai.gemini.model-tokenizer}")
-  private String tokenizerModelName;
-
-  @Value("${insightrag.ai.gemini.api-key}")
-  private String apiKey;
-
-  @Value("${insightrag.ai.gemini.base-url:https://generativelanguage.googleapis.com/v1beta}")
-  private String geminiBaseUrl;
+  private final GenAiProperties genAiProperties;
 
   @Bean
   public TokenCountEstimator tokenCountEstimator() {
-    return new GeminiTokenEstimatorAdapter(tokenizerModelName);
+    return new GeminiTokenEstimatorAdapter(genAiProperties.modelTokenizer());
   }
 
   @Bean
   @Primary
   public ChatModel mainChatModel() {
     return GoogleGenAiChatModel.builder()
-        .apiKey(apiKey)
-        .modelName(modelName)
+        .apiKey(genAiProperties.apiKey())
+        .modelName(genAiProperties.modelMain())
         .temperature(0.0)
         .maxRetries(3)
         .logRequests(true)
@@ -56,8 +45,8 @@ public class AiConfig {
   @Bean
   public StreamingChatModel streamingChatModel() {
     return GoogleGenAiStreamingChatModel.builder()
-        .apiKey(apiKey)
-        .modelName(modelName)
+        .apiKey(genAiProperties.apiKey())
+        .modelName(genAiProperties.modelMain())
         .temperature(0.0)
         .logRequests(true)
         .logResponses(true)
@@ -67,9 +56,12 @@ public class AiConfig {
   @Bean
   public ChatModel fastChatModel() {
     return GoogleGenAiChatModel.builder()
-        .apiKey(apiKey)
-        .modelName(liteModelName)
+        .apiKey(genAiProperties.apiKey())
+        .modelName(genAiProperties.modelLite())
         .temperature(0.0)
+        .logRequests(true)
+        .logResponses(true)
+        .maxRetries(3)
         .build();
   }
 
@@ -83,8 +75,8 @@ public class AiConfig {
     JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory();
     requestFactory.setReadTimeout(Duration.ofSeconds(5));
     return builder
-        .baseUrl(geminiBaseUrl)
-        .defaultHeader("x-goog-api-key", apiKey)
+        .baseUrl(genAiProperties.baseUrl())
+        .defaultHeader("x-goog-api-key", genAiProperties.apiKey())
         .requestFactory(requestFactory)
         .build();
   }

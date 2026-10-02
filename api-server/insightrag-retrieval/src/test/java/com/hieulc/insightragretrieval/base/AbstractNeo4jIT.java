@@ -7,7 +7,7 @@ import org.testcontainers.neo4j.Neo4jContainer;
 public class AbstractNeo4jIT {
   @ServiceConnection
   protected static Neo4jContainer neo4j =
-      new Neo4jContainer("neo4j:5.26")
+      new Neo4jContainer("neo4j:2026.07.1")
           .withoutAuthentication()
           .withStartupTimeout(Duration.ofMinutes(3))
           .withPlugins("apoc")

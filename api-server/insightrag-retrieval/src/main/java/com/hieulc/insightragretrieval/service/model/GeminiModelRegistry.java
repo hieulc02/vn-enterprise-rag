@@ -1,13 +1,13 @@
-package com.hieulc.insightragretrieval.service.chat.model;
+package com.hieulc.insightragretrieval.service.model;
 
-import com.hieulc.insightragretrieval.dto.ModelCapacity;
-import com.hieulc.insightragretrieval.dto.ModelCapacityInfo;
+import com.hieulc.insightragretrieval.config.properties.GenAiProperties;
+import com.hieulc.insightragretrieval.dto.model.ModelCapacity;
+import com.hieulc.insightragretrieval.dto.model.ModelCapacityInfo;
 import jakarta.annotation.PostConstruct;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
@@ -15,45 +15,38 @@ import org.springframework.web.client.RestClient;
 @Slf4j
 public class GeminiModelRegistry implements ModelRegistry {
 
-  private final String primaryModel;
   private final RestClient geminiRestClient;
-  private int fallbackInputLimit;
-  private int fallbackOutputLimit;
+  private final GenAiProperties genAiProperties;
 
   private final Map<String, ModelCapacity> modelCapacityCache = new ConcurrentHashMap<>();
 
   public GeminiModelRegistry(
-      @Qualifier("geminiRestClient") RestClient geminiRestClient,
-      @Value("${insightrag.ai.gemini.model-main}") String primaryModel,
-      @Value("${insightrag.ai.gemini.fallback.input-limit}") int fallbackInputLimit,
-      @Value("${insightrag.ai.gemini.fallback.output-limit}") int fallbackOutputLimit) {
+      @Qualifier("geminiRestClient") RestClient geminiRestClient, GenAiProperties genAiProperties) {
     this.geminiRestClient = geminiRestClient;
-    this.primaryModel = primaryModel;
-    this.fallbackInputLimit = fallbackInputLimit;
-    this.fallbackOutputLimit = fallbackOutputLimit;
+    this.genAiProperties = genAiProperties;
   }
 
   @PostConstruct
   void initializeRegistry() {
-    log.info("Fetching model capacity from Gemini API for model: {} ", primaryModel);
+    log.info("Fetching model capacity from Gemini API for model: {} ", genAiProperties.modelMain());
 
     try {
       ModelCapacityInfo response =
           geminiRestClient
               .get()
-              .uri("/models/{model}", primaryModel)
+              .uri("/models/{model}", genAiProperties.modelMain())
               .retrieve()
               .body(ModelCapacityInfo.class);
 
       if (response != null && response.inputTokenLimit() > 0) {
         modelCapacityCache.put(
-            primaryModel,
+            genAiProperties.modelMain(),
             new ModelCapacity(
-                primaryModel,
+                genAiProperties.modelMain(),
                 new ModelCapacityInfo(response.inputTokenLimit(), response.outputTokenLimit())));
         log.info(
             "Registered limit for {}. Input: {}, Output: {}",
-            primaryModel,
+            genAiProperties.modelMain(),
             response.inputTokenLimit(),
             response.outputTokenLimit());
       }
@@ -61,12 +54,15 @@ public class GeminiModelRegistry implements ModelRegistry {
     } catch (Exception e) {
       log.warn(
           "Failed to fetch limits for model {}. Default to fallback. Reason: {}",
-          primaryModel,
+          genAiProperties.modelMain(),
           e.getMessage());
       modelCapacityCache.put(
-          primaryModel,
+          genAiProperties.modelMain(),
           new ModelCapacity(
-              primaryModel, new ModelCapacityInfo(fallbackInputLimit, fallbackOutputLimit)));
+              genAiProperties.modelMain(),
+              new ModelCapacityInfo(
+                  genAiProperties.fallback().inputLimit(),
+                  genAiProperties.fallback().outputLimit())));
     }
   }
 
@@ -75,6 +71,9 @@ public class GeminiModelRegistry implements ModelRegistry {
     return modelCapacityCache.getOrDefault(
         modelName,
         new ModelCapacity(
-            primaryModel, new ModelCapacityInfo(fallbackInputLimit, fallbackOutputLimit)));
+            genAiProperties.modelMain(),
+            new ModelCapacityInfo(
+                genAiProperties.fallback().inputLimit(),
+                genAiProperties.fallback().outputLimit())));
   }
 }
