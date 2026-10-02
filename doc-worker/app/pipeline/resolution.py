@@ -74,6 +74,28 @@ class EntityResolutionPipeline:
 
         return " | ".join(entity_context)
 
+    @staticmethod
+    def _gen_relationship_context(
+        source_context: str,
+        edge_context: str,
+        target_context: str,
+        properties: dict,
+    ) -> str:
+        relationship_context: list[str] = []
+
+        if source_context:
+            relationship_context.append(source_context)
+        if edge_context:
+            relationship_context.append(edge_context)
+        if target_context:
+            relationship_context.append(target_context)
+        if properties:
+            relationship_context.extend(
+                value for _, value in properties.items() if isinstance(value, str)
+            )
+
+        return " | ".join(relationship_context)
+
     async def _consolidate_graph(
         self,
         file_key: str,
@@ -104,6 +126,16 @@ class EntityResolutionPipeline:
                     {prop.key: prop.value for prop in relationship.properties}
                     if relationship.properties
                     else {}
+                )
+
+                source_entity = self.registry.entities.get(global_source)
+                target_entity = self.registry.entities.get(global_target)
+
+                relationship.description = self._gen_relationship_context(
+                    source_entity.title if source_entity else "",
+                    relationship.description if relationship.description else "",
+                    target_entity.title if target_entity else "",
+                    relationship_properties_dict,
                 )
 
                 edge_key = (global_source, global_target, relationship.type)
