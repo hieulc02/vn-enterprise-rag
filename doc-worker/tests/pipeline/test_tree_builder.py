@@ -1,6 +1,10 @@
 import pytest
 
-from app.pipeline.tree_builder import DocumentTreeBuilder, TableNode
+from app.pipeline.tree_builder import (
+    DocumentTreeBuilder,
+    TableNode,
+    build_document_tree,
+)
 from app.extraction.layout import DocumentHierarchyTracker
 
 
@@ -86,3 +90,302 @@ class TestDocumentTreeBuilder:
 
         assert builder.curr_node.content == ["text_dupl", "text_uniq"]
         assert builder._page_buffer[2] == []
+
+
+from app.models.domain import ParsedBlock
+
+
+def test_build_document_tree_simple_parsed_block():
+    blocks = [
+        {
+            "original_page": 1,
+            "page_order": 1,
+            "block_type": "header",
+            "content": "H1",
+            "metadata": {"level": 1},
+        },
+        {
+            "original_page": 2,
+            "page_order": 2,
+            "block_type": "text",
+            "content": "text_1",
+            "metadata": {},
+        },
+        {
+            "original_page": 2,
+            "page_order": 3,
+            "block_type": "header",
+            "content": "H2",
+            "metadata": {"level": 1},
+        },
+        {
+            "original_page": 2,
+            "page_order": 4,
+            "block_type": "text",
+            "content": "text_2",
+            "metadata": {},
+        },
+    ]
+
+    parsed_blocks = [ParsedBlock(**block) for block in blocks]
+
+    root_node = build_document_tree(parsed_blocks)
+
+    assert root_node.children[0].title == ["H1"]
+    assert root_node.children[0].content == ["text_1"]
+    assert root_node.children[0].level == 1
+    assert root_node.children[1].title == ["H2"]
+    assert root_node.children[1].content == ["text_2"]
+    assert root_node.children[1].level == 1
+
+
+def test_build_document_tree_hierarchy_parsed_block():
+    blocks = [
+        {
+            "original_page": 1,
+            "page_order": 1,
+            "block_type": "header",
+            "content": "H1",
+            "metadata": {"level": 1},
+        },
+        {
+            "original_page": 2,
+            "page_order": 2,
+            "block_type": "header",
+            "content": "H1.1",
+            "metadata": {"level": 2},
+        },
+        {
+            "original_page": 2,
+            "page_order": 3,
+            "block_type": "text",
+            "content": "text_1",
+            "metadata": {},
+        },
+        {
+            "original_page": 2,
+            "page_order": 4,
+            "block_type": "header",
+            "content": "H2.1",
+            "metadata": {"level": 2},
+        },
+    ]
+
+    parsed_blocks = [ParsedBlock(**block) for block in blocks]
+
+    root_node = build_document_tree(parsed_blocks)
+
+    assert root_node.children[0].title == ["H1"]
+    assert root_node.children[0].level == 1
+    assert root_node.children[0].children[0].title == ["H1.1"]
+    assert root_node.children[0].children[0].level == 2
+    assert root_node.children[0].children[0].content == ["text_1"]
+    assert root_node.children[0].children[1].title == ["H2.1"]
+    assert root_node.children[0].children[1].level == 2
+
+
+def test_build_document_tree_parsed_blocks_with_table():
+    blocks = [
+        {
+            "original_page": 1,
+            "page_order": 1,
+            "block_type": "header",
+            "content": "H1",
+            "metadata": {"level": 1},
+        },
+        {
+            "original_page": 1,
+            "page_order": 2,
+            "block_type": "text",
+            "content": "text_1",
+            "metadata": {},
+        },
+        {
+            "original_page": 2,
+            "page_order": 3,
+            "block_type": "text",
+            "content": "text_2",
+            "metadata": {},
+        },
+        {
+            "original_page": 2,
+            "page_order": 4,
+            "block_type": "table",
+            "content": [["row1", "val1"], ["row2", "val2"]],
+            "metadata": {"headers": ["col1", "col2"]},
+        },
+    ]
+
+    parsed_blocks = [ParsedBlock(**block) for block in blocks]
+
+    root_node = build_document_tree(parsed_blocks)
+
+    assert root_node.children[0].title == ["H1"]
+    assert root_node.children[0].level == 1
+    assert root_node.children[0].content == ["text_1", "text_2"]
+    assert isinstance(root_node.children[0].children[0], TableNode)
+    assert root_node.children[0].children[0].headers == ["col1", "col2"]
+    assert root_node.children[0].children[0].rows == [
+        ["row1", "val1"],
+        ["row2", "val2"],
+    ]
+
+
+def test_build_document_tree_parsed_blocks_with_multiple_tables():
+    blocks = [
+        {
+            "original_page": 1,
+            "page_order": 1,
+            "block_type": "header",
+            "content": "H1",
+            "metadata": {"level": 1},
+        },
+        {
+            "original_page": 1,
+            "page_order": 2,
+            "block_type": "text",
+            "content": "text_1",
+            "metadata": {},
+        },
+        {
+            "original_page": 2,
+            "page_order": 3,
+            "block_type": "table",
+            "content": [["row1", "val1"], ["row2", "val2"]],
+            "metadata": {"headers": ["col1", "col2"]},
+        },
+        {
+            "original_page": 3,
+            "page_order": 4,
+            "block_type": "table",
+            "content": [["row3", "val3"], ["row4", "val4"]],
+            "metadata": {"headers": ["col3", "col4"]},
+        },
+    ]
+
+    parsed_blocks = [ParsedBlock(**block) for block in blocks]
+
+    root_node = build_document_tree(parsed_blocks)
+
+    assert root_node.children[0].title == ["H1"]
+    assert root_node.children[0].level == 1
+    assert root_node.children[0].content == ["text_1"]
+    assert isinstance(root_node.children[0].children[0], TableNode)
+    assert root_node.children[0].children[0].headers == ["col1", "col2"]
+    assert root_node.children[0].children[0].rows == [
+        ["row1", "val1"],
+        ["row2", "val2"],
+    ]
+    assert isinstance(root_node.children[0].children[1], TableNode)
+    assert root_node.children[0].children[1].headers == ["col3", "col4"]
+    assert root_node.children[0].children[1].rows == [
+        ["row3", "val3"],
+        ["row4", "val4"],
+    ]
+
+
+def test_build_document_tree_hierarchy_parsed_blocks_without_level():
+    blocks = [
+        {
+            "original_page": 1,
+            "page_order": 1,
+            "block_type": "header",
+            "content": "H1",
+            "metadata": {},
+        },
+        {
+            "original_page": 1,
+            "page_order": 2,
+            "block_type": "text",
+            "content": "text_1",
+            "metadata": {},
+        },
+        {
+            "original_page": 2,
+            "page_order": 3,
+            "block_type": "header",
+            "content": "1.1",
+            "metadata": {},
+        },
+        {
+            "original_page": 2,
+            "page_order": 4,
+            "block_type": "text",
+            "content": "text_2",
+            "metadata": {},
+        },
+        {
+            "original_page": 3,
+            "page_order": 5,
+            "block_type": "table",
+            "content": [["row1", "val1"], ["row2", "val2"]],
+            "metadata": {"headers": ["col1", "col2"]},
+        },
+    ]
+
+    parsed_blocks = [ParsedBlock(**block) for block in blocks]
+
+    root_node = build_document_tree(parsed_blocks)
+
+    assert root_node.children[0].title == ["H1"]
+    assert root_node.children[0].level == 1
+    assert root_node.children[0].content == ["text_1"]
+    assert root_node.children[0].children[0].title == ["1.1"]
+    assert root_node.children[0].children[0].level == 2
+    assert root_node.children[0].children[0].content == ["text_2"]
+    assert isinstance(root_node.children[0].children[0].children[0], TableNode)
+    assert root_node.children[0].children[0].children[0].headers == ["col1", "col2"]
+    assert root_node.children[0].children[0].children[0].rows == [
+        ["row1", "val1"],
+        ["row2", "val2"],
+    ]
+
+
+def test_build_document_tree_hierarchy_page_buffer():
+    blocks = [
+        {
+            "original_page": 1,
+            "page_order": 1,
+            "block_type": "header",
+            "content": "H1",
+            "metadata": {},
+        },
+        {
+            "original_page": 1,
+            "page_order": 2,
+            "block_type": "text",
+            "content": "text_1",
+            "metadata": {},
+        },
+        {
+            "original_page": 2,
+            "page_order": 3,
+            "block_type": "text",
+            "content": "text_2",
+            "metadata": {},
+        },
+        {
+            "original_page": 3,
+            "page_order": 3,
+            "block_type": "text",
+            "content": "text_3",
+            "metadata": {},
+        },
+        {
+            "original_page": 2,
+            "page_order": 4,
+            "block_type": "header",
+            "content": "H2",
+            "metadata": {},
+        },
+    ]
+
+    parsed_blocks = [ParsedBlock(**block) for block in blocks]
+
+    root_node = build_document_tree(parsed_blocks)
+
+    assert root_node.children[0].title == ["H1"]
+    assert root_node.children[0].level == 1
+    assert root_node.children[0].content == ["text_1", "text_2", "text_3"]
+    assert root_node.children[1].title == ["H2"]
+    assert root_node.children[1].level == 1
