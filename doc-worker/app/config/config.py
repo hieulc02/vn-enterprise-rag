@@ -1,4 +1,7 @@
+import tempfile
+
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict  # type: ignore
@@ -18,9 +21,11 @@ class ValidationSettings(AppBaseSettings):
     model_config = SettingsConfigDict(env_prefix="VALIDATION_")
 
     max_concurrent: int = Field(default=2, ge=1)
-    chunk_size: int = Field(default=20, ge=1)
+    batch_size: int = Field(default=20, ge=1)
     max_retries: int = Field(default=3, ge=0)
     base_wait_sec: int = Field(default=30, ge=1)
+
+    cached_dir: Path = Path(tempfile.gettempdir()) / "llm_cache"
 
 
 class ExtractionSettings(AppBaseSettings):

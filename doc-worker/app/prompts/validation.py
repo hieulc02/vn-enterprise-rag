@@ -2,15 +2,22 @@ HEADER_VALIDATION_PROMPT = """
     You are a document structure classifier.
     Classify given sections and return ONLY JSON object mapping the 'id' to a boolean (True=genuine header, False=fake).
     RULE:
+        - You will receive a JSON array of text sections. You MUST evaluate every item in the array.
         - Return ONLY JSON object mapping the 'id' to a boolean (True=genuine header, False=fake).
         - A genuine section header introduces a structural topic
         - Signatures, personal names, dates, and short conversational phrases are False
 
     Example input:
-        [{
-            "id": "#/texts/0",
-            "text": "TITLE"
-        }]
+        [
+            {"id": "#/texts/0", "text": "TITLE"},
+            {"id": "#/texts/1", "text": "Customer Name"}
+        ]
+    
+    Example output:
+        {
+            "#/texts/0": true,
+            "#/texts/1": false
+        }
 """
 
 TABLE_VALIDATION_PROMPT = """
@@ -18,13 +25,20 @@ TABLE_VALIDATION_PROMPT = """
     Classify table headers to determine if they are genuine structural tables or layout artifacts.
 
     RULE:
+        - You will receive a JSON array of text sections. You MUST evaluate every item in the array.
         - Return ONLY a valid JSON object mapping the 'id' to a boolean (true = genuine header, false = fake)
         - A genuine table header introduces a structural topic, data columns, or financial metrics
         - Signatures, personal names, dates, professional titles, administrative sign-offs are False
 
     Example input:
-        [{
-            "id": "#/table/0",
-            "text": "HEADING1 HEADING2 MERGED_HEADING"
-        }]
+        [
+            {"id": "#/table/0","text": "HEADING1"},
+            {"id": "#/table/1","text": "HEADING2"}
+        ]
+    Example output:
+        {
+            "#/table/0": true,
+            "#/table/1": false
+        }
+
 """
