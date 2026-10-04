@@ -83,16 +83,19 @@ class EntityResolutionPipeline:
     ) -> str:
         relationship_context: list[str] = []
 
+        if not edge_context:
+            return ""
+
         if source_context:
             relationship_context.append(source_context)
         if edge_context:
             relationship_context.append(edge_context)
-        if target_context:
-            relationship_context.append(target_context)
         if properties:
             relationship_context.extend(
                 value for _, value in properties.items() if isinstance(value, str)
             )
+        if target_context:
+            relationship_context.append(target_context)
 
         return " | ".join(relationship_context)
 
@@ -128,16 +131,6 @@ class EntityResolutionPipeline:
                     else {}
                 )
 
-                source_entity = self.registry.entities.get(global_source)
-                target_entity = self.registry.entities.get(global_target)
-
-                relationship.description = self._gen_relationship_context(
-                    source_entity.title if source_entity else "",
-                    relationship.description if relationship.description else "",
-                    target_entity.title if target_entity else "",
-                    relationship_properties_dict,
-                )
-
                 edge_key = (global_source, global_target, relationship.type)
 
                 if edge_key not in merged_relationships:
@@ -167,6 +160,21 @@ class EntityResolutionPipeline:
                         merged_relationship.description = f"{merged_relationship.description} | {relationship.description}"
                     else:
                         merged_relationship.description = relationship.description
+
+        for relationship in merged_relationships.values():
+            if (
+                relationship.source in self.registry.entities
+                and relationship.target in self.registry.entities
+            ):
+                source_entity = self.registry.entities[relationship.source]
+                target_entity = self.registry.entities[relationship.target]
+
+                relationship.description = self._gen_relationship_context(
+                    source_entity.title if source_entity else "",
+                    relationship.description if relationship.description else "",
+                    target_entity.title if target_entity else "",
+                    relationship.properties,
+                )
 
         relationships = list(merged_relationships.values())
 
