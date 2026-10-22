@@ -5,7 +5,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.0.6</version>
+        <version>4.1.1</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
 
@@ -14,17 +14,102 @@
     <version>0.0.1-SNAPSHOT</version>
     <packaging>pom</packaging>
 
+    <properties>
+        <java.version>21</java.version>
+        <logback.version>1.6.3</logback.version>
+        <minio.version>9.0.3</minio.version>
+        <jackson-core.version>2.21.7</jackson-core.version>
+        <!--CVE-2026-68497-->
+        <jackson-databind.version>2.21.7</jackson-databind.version>
+        <!--CVE-2026-8763, CVE-2026-59650, CVE-2026-58062-->
+        <bcprov-jdk18on.version>1.86</bcprov-jdk18on.version>
+        <!--CVE-2026-90559-->
+        <snappy-java.version>1.1.10.9</snappy-java.version>
+        <!--CVE-2026-87795, CVE-2026-90852, CVE-2026-89046, etc.-->
+        <zstd-jni.version>1.5.7-14</zstd-jni.version>
+        <!--CVE-2026-106451-->
+        <lz4-java.version>1.11.4</lz4-java.version>
+        <!--CVE-2026-89407, CVE-2026-89425-->
+        <tools.jackson-core.version>3.1.7</tools.jackson-core.version>
+        <!--CVE-2026-68497, CVE-2026-91777-->
+        <tools.jackson-databind.version>3.1.7</tools.jackson-databind.version>
+        <!--CVE-2026-103119, CVE-2026-101356, CVE-2026-101296, etc.-->
+        <tomcat.version>11.0.27</tomcat.version>
+        <!--CVE-2026-82617-->
+        <opennlp-tools.version>2.5.12</opennlp-tools.version>
+        <!-- CVE-2026-63337, CVE-2026-69219-->
+        <amqp-client.version>5.37.0</amqp-client.version>
+    </properties>
+
     <modules>
         <module>core-infrastructure</module>
         <module>insightrag-ingestion</module>
         <module>insightrag-retrieval</module>
         <module>insightrag-worker</module>
     </modules>
-    
-    <properties>
-        <java.version>21</java.version>
-    </properties>
 
+    <dependencyManagement>
+
+        <dependencies>
+            <dependency>
+                <groupId>io.minio</groupId>
+                <artifactId>minio</artifactId>
+                <version>${minio.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-core</artifactId>
+                <version>${jackson-core.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-databind</artifactId>
+                <version>${jackson-databind.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>tools.jackson.core</groupId>
+                <artifactId>jackson-core</artifactId>
+                <version>${tools.jackson-core.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>tools.jackson.core</groupId>
+                <artifactId>jackson-databind</artifactId>
+                <version>${tools.jackson-databind.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcprov-jdk18on</artifactId>
+                <version>${bcprov-jdk18on.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.xerial.snappy</groupId>
+                <artifactId>snappy-java</artifactId>
+                <version>${snappy-java.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.luben</groupId>
+                <artifactId>zstd-jni</artifactId>
+                <version>${zstd-jni.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>at.yawk.lz4</groupId>
+                <artifactId>lz4-java</artifactId>
+                <version>${lz4-java.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.opennlp</groupId>
+                <artifactId>opennlp-tools</artifactId>
+                <version>${opennlp-tools.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.rabbitmq</groupId>
+                <artifactId>amqp-client</artifactId>
+                <version>${amqp-client.version}</version>
+            </dependency>
+        </dependencies>
+
+    </dependencyManagement>
     <build>
         <pluginManagement>
             <plugins>
