@@ -1,0 +1,23 @@
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.1
+    container_name: insightrag-keycloak
+    profiles: [ retrieval ]
+    restart: on-failure
+    command: start-dev --import-realm
+    environment:
+      - KC_DB=postgres
+      - KC_DB_URL=jdbc:postgresql://insightrag-db:5432/keycloak_db
+      - KC_HOSTNAME_STRICT=false
+      - KC_HTTP_ENABLED=true
+    ports:
+      - "9090:8080"
+    env_file:
+      - ../.env
+    volumes:
+      - ../auth/keycloak:/opt/keycloak/data/import
+    networks:
+      - insightrag_net
+    depends_on:
+      postgres-db:
+        condition: service_healthy

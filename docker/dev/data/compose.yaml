@@ -26,7 +26,7 @@ services:
       KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
       CLUSTER_ID: '4L6g3nShT-eMCtK--X86sw'
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 3000
 
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
 
@@ -68,7 +68,7 @@ services:
   postgres-db:
     image: pgvector/pgvector:pg16
     container_name: insightrag-db
-    profiles: [ worker ]
+    profiles: [ worker, retrieval ]
     restart: unless-stopped
     env_file:
       - ../.env
