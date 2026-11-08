@@ -4,7 +4,8 @@
 *.iml
 
 # Environment varibles
-docker/dev/.env
+docker/.env
+*.env
 
 **/.env.*
 !**/.env.example
