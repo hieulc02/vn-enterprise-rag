@@ -438,7 +438,7 @@ wheels = [
 ]
 
 [[package]]
-name = "doc-worker"
+name = "insightrag-extractor"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

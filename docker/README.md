@@ -20,8 +20,9 @@ docker/
 
 ## 2. Environment & Secret Contract (`.env`)
 
-Copy `.env.example` to `.env` inside `docker/` (and ensure service-specific `.env` file exist in `../api-server/.env`
-and `../doc-worker/.env` for local `dev` mode).
+Copy `.env.example` to `.env` inside `docker/` (and ensure service-specific `.env` file exist in
+`../insightrag-core/.env`
+and `../insightrag-extractor/.env` for local `dev` mode).
 
 `compose.prod.yml` enforces **fail-fast variable validation** (`${VAR:?error)`). Deployment will immediately abort if
 any of the following variables are unset:
@@ -81,7 +82,9 @@ chmod +x manage.sh script/*.sh
 ```
 
 **Local Development (`dev`)**
-Builds images locally from `../api-server` and `../doc-worker` and exposes infrastructure port to `localhost` for IDE
+Builds images locally from `../insightrag-core` and `../insightrag-extractor` and exposes infrastructure port to
+`localhost`
+for IDE
 debugging:
 
 ```bash
