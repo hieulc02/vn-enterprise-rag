@@ -1,0 +1,51 @@
+package com.hieulc.insightragworker.infrastructure.messaging.kafka;
+
+import com.hieulc.insightragworker.config.properties.KafkaTopicsProperties;
+import com.hieulc.insightragworker.outbox.model.OutboxEvent;
+import com.hieulc.insightragworker.outbox.model.PublishResult;
+import com.hieulc.insightragworker.outbox.port.OutboxEventPublisher;
+import java.util.concurrent.CompletableFuture;
+import lombok.RequiredArgsConstructor;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
+import tools.jackson.databind.util.RawValue;
+
+@Component
+@RequiredArgsConstructor
+public class KafkaOutboxPublisher implements OutboxEventPublisher {
+
+  private final ObjectMapper objectMapper;
+
+  private final KafkaTemplate<String, String> kafkaTemplate;
+  private final KafkaTopicsProperties topicsProperties;
+
+  @Override
+  public CompletableFuture<PublishResult> publish(OutboxEvent outboxEvent) {
+    try {
+      return kafkaTemplate
+          .send(
+              topicsProperties.outboxEvent(),
+              outboxEvent.aggregateId(),
+              mapOutboxEventToJson(outboxEvent))
+          .thenApply(
+              sendResult ->
+                  new PublishResult(
+                      String.valueOf(sendResult.getRecordMetadata().offset()),
+                      topicsProperties.outboxEvent()));
+    } catch (Exception e) {
+      return CompletableFuture.failedFuture(e);
+    }
+  }
+
+  private String mapOutboxEventToJson(OutboxEvent outboxEvent) {
+    ObjectNode message = objectMapper.createObjectNode();
+    message.put("id", outboxEvent.eventId());
+    message.put("aggregate_type", outboxEvent.aggregateType());
+    message.put("event_type", outboxEvent.eventType());
+    message.putRawValue("payload", new RawValue(outboxEvent.data()));
+
+    return message.toString();
+  }
+}

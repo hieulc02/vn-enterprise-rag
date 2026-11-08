@@ -1,11 +1,13 @@
 package com.hieulc.insightragworker.config;
 
 import com.hieulc.coreinfrastructure.exception.StorageProviderException;
-import com.hieulc.insightragworker.exception.appli.DepartmentInvalidException;
+import com.hieulc.insightragworker.config.properties.RabbitMqProperties;
 import java.util.ArrayList;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import org.aopalliance.intercept.MethodInterceptor;
 import org.springframework.amqp.core.*;
+import org.springframework.amqp.rabbit.annotation.EnableRabbit;
 import org.springframework.amqp.rabbit.config.RetryInterceptorBuilder;
 import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
@@ -15,107 +17,109 @@ import org.springframework.amqp.support.converter.*;
 import org.springframework.boot.amqp.autoconfigure.SimpleRabbitListenerContainerFactoryConfigurer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.retry.*;
 import org.springframework.core.retry.RetryPolicy;
 
 @Configuration
-public class RabbitMQConfig {
+@RequiredArgsConstructor
+@EnableRabbit
+public class RabbitMqConfig {
 
-    public static final String DLQ_QUEUE = "dlq_direct_queue";
-    public static final String DLX_EXCHANGE = "dlx.direct.exchange";
-    public static final String DLX_ROUTING_KEY = "worker.failed";
+  private final RabbitMqProperties rabbitMqProperties;
 
-    public static final String MAIN_QUEUE = "main_direct_queue";
-    public static final String MAIN_EXCHANGE = "main.direct.exchange";
-    public static final String MAIN_ROUTING_KEY = "worker.process";
+  /**
+   * Direct Exchange is highly effective in case of granular routing, multi-queue isolation, and
+   * predictable handling failure
+   */
+  @Bean
+  public DirectExchange deadLetterExchange() {
+    return new DirectExchange(rabbitMqProperties.dlExchange());
+  }
 
-    @Bean
-    public DirectExchange deadLetterExchange(){
-        return new DirectExchange(DLX_EXCHANGE);
-    }
+  @Bean
+  public Queue deadLetterQueue() {
+    return QueueBuilder.durable(rabbitMqProperties.dlQueue()).build();
+  }
 
-    @Bean
-    public Queue deadLetterQueue(){
-        return QueueBuilder.durable(DLQ_QUEUE)
-                .build();
-    }
+  @Bean
+  public Binding deadLetterBinding(DirectExchange deadLetterExchange, Queue deadLetterQueue) {
+    return BindingBuilder.bind(deadLetterQueue)
+        .to(deadLetterExchange)
+        .with(rabbitMqProperties.dlRoutingKey());
+  }
 
-    @Bean
-    public Binding deadLetterBinding(DirectExchange deadLetterExchange, Queue deadLetterQueue){
-        return BindingBuilder.bind(deadLetterQueue).to(deadLetterExchange).with(DLX_ROUTING_KEY);
-    }
+  @Bean
+  public DirectExchange mainExchange() {
+    return new DirectExchange(rabbitMqProperties.mainExchange());
+  }
 
-    @Bean
-    public DirectExchange mainExchange(){
-        return new DirectExchange(MAIN_EXCHANGE);
-    }
+  @Bean
+  public Queue mainQueue() {
+    return QueueBuilder.durable(rabbitMqProperties.mainQueue())
+        .deadLetterExchange(rabbitMqProperties.dlExchange())
+        .deadLetterRoutingKey(rabbitMqProperties.dlRoutingKey())
+        .build();
+  }
 
-    @Bean
-    public Queue mainQueue(){
-        return QueueBuilder.durable(MAIN_QUEUE)
-                .deadLetterExchange(DLX_EXCHANGE)
-                .deadLetterRoutingKey(DLX_ROUTING_KEY)
-                .build();
-    }
+  @Bean
+  public Binding mainBinding(DirectExchange mainExchange, Queue mainQueue) {
+    return BindingBuilder.bind(mainQueue)
+        .to(mainExchange)
+        .with(rabbitMqProperties.mainRoutingKey());
+  }
 
-    @Bean
-    public Binding mainBinding(DirectExchange mainExchange, Queue mainQueue){
-        return BindingBuilder.bind(mainQueue).to(mainExchange).with(MAIN_ROUTING_KEY);
-    }
+  @Bean
+  public JacksonJsonMessageConverter jsonMessageConverter() {
+    return new JacksonJsonMessageConverter();
+  }
 
-    @Bean
-    public JacksonJsonMessageConverter jsonMessageConverter() {
-        return new JacksonJsonMessageConverter();
-    }
+  /**
+   * Default behavior for exhausted retries
+   *
+   * @param amqpTemplate - the default Spring-initialized bean for AMQP-supported processes
+   * @return republish recovered messages to a specified exchanged
+   */
+  @Bean
+  public MessageRecoverer messageRecoverer(AmqpTemplate amqpTemplate) {
+    RepublishMessageRecoverer recoverer =
+        new RepublishMessageRecoverer(
+            amqpTemplate, rabbitMqProperties.dlExchange(), rabbitMqProperties.dlRoutingKey());
 
-    /**
-     * Default behavior for exhausted retries
-     * @param amqpTemplate
-     * @return republish recovered messages to a specified exchanged
-     */
-    @Bean
-    public MessageRecoverer messageRecoverer(AmqpTemplate amqpTemplate){
-        return new RepublishMessageRecoverer(amqpTemplate, DLX_EXCHANGE, DLX_ROUTING_KEY);
-    }
+    recoverer.includeStackTrace(true);
+    return recoverer;
+  }
 
-    @Bean
-    public SimpleRabbitListenerContainerFactory rabbitListenerContainerFactory(
-            ConnectionFactory connectionFactory,
-            JacksonJsonMessageConverter jsonMessageConverter,
-            SimpleRabbitListenerContainerFactoryConfigurer configurer,
-            MethodInterceptor retryOperationsInterceptor
-    ){
-        SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
-        configurer.configure(factory, connectionFactory);
+  @Bean
+  public SimpleRabbitListenerContainerFactory rabbitListenerContainerFactory(
+      ConnectionFactory connectionFactory,
+      JacksonJsonMessageConverter jsonMessageConverter,
+      SimpleRabbitListenerContainerFactoryConfigurer configurer,
+      MethodInterceptor retryOperationsInterceptor) {
 
-        factory.setMessageConverter(jsonMessageConverter);
-//        factory.setAcknowledgeMode(AcknowledgeMode.MANUAL);
-        factory.setAdviceChain(retryOperationsInterceptor);
+    SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
+    configurer.configure(factory, connectionFactory);
 
-        return factory;
-    }
+    factory.setMessageConverter(jsonMessageConverter);
+    factory.setAdviceChain(retryOperationsInterceptor);
 
-    @Bean
-    public MethodInterceptor retryOperationsInterceptor(
-            MessageRecoverer messageRecoverer
-    ) {
-        List<Class<? extends Throwable>> nonRetryableException = new ArrayList<>();
-        nonRetryableException.add(DepartmentInvalidException.class);
-        nonRetryableException.add(IllegalArgumentException.class);
+    return factory;
+  }
 
-        List<Class<? extends Throwable>> retryableException = new ArrayList<>();
-        retryableException.add(StorageProviderException.class);
+  @Bean
+  public MethodInterceptor retryOperationsInterceptor(MessageRecoverer messageRecoverer) {
+    List<Class<? extends Throwable>> nonRetryableException = new ArrayList<>();
+    nonRetryableException.add(IllegalArgumentException.class);
 
-        RetryPolicy policy = RetryPolicy.builder()
-                .includes(retryableException)
-                .excludes(nonRetryableException)
-                .build();
+    List<Class<? extends Throwable>> retryableException = new ArrayList<>();
+    retryableException.add(StorageProviderException.class);
 
-        return RetryInterceptorBuilder.stateless()
-                .backOffOptions(1, 2.0, 10)
-                .maxRetries(3)
-                .retryPolicy(policy)
-                .recoverer(messageRecoverer)
-                .build();
-    }
+    RetryPolicy policy =
+        RetryPolicy.builder().includes(retryableException).excludes(nonRetryableException).build();
+
+    return RetryInterceptorBuilder.stateless()
+        .backOffOptions(1, 2.0, 10)
+        .maxRetries(3)
+        .retryPolicy(policy)
+        .recoverer(messageRecoverer)
+        .build();
+  }
 }

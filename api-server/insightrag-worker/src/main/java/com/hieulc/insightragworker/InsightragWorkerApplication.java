@@ -6,7 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 
 @SpringBootApplication(
     scanBasePackages = {"com.hieulc.insightragworker", "com.hieulc.coreinfrastructure"})
-@ConfigurationPropertiesScan
+@ConfigurationPropertiesScan("com.hieulc.insightragworker.config.properties")
 public class InsightragWorkerApplication {
 
   public static void main(String[] args) {
