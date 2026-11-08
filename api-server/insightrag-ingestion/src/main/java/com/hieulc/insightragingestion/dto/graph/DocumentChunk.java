@@ -1,4 +1,4 @@
-package com.hieulc.insightragingestion.dto;
+package com.hieulc.insightragingestion.dto.graph;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -9,6 +9,6 @@ public record DocumentChunk(
     @JsonProperty("chunk_index") int chunkIndex,
     float[] embedding) {
   public record ChunkMetadata(
-      @JsonProperty("document_id") String documentId,
+      @JsonProperty("document_key") String documentKey,
       @JsonProperty("page_number") int pageNumber) {}
 }

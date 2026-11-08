@@ -14,7 +14,12 @@ public abstract class AbstractKafkaIT {
     try {
       kafka.start();
     } catch (Exception e) {
-      System.err.println(kafka.getLogs());
+      e.printStackTrace();
+      try {
+        System.err.println(kafka.getLogs());
+      } catch (Exception ex) {
+        System.err.println(ex.getMessage());
+      }
       throw new RuntimeException(e);
     }
   }

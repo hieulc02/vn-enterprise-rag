@@ -1,19 +1,19 @@
-package com.hieulc.insightragingestion.repository;
+package com.hieulc.insightragingestion.repository.graph;
 
 import static org.assertj.core.api.Assertions.*;
 
 import org.junit.jupiter.api.Test;
 
-class GraphRepositoryTest {
+class GraphCypherProviderTest {
 
   @Test
-  void shouldGenerateCorrectMergeChunkCypher() {
+  void buildMergeChunksNodeAndEdgeCypher_maps_raw_cypher() {
 
-    String cypher = GraphRepositoryImpl.buildMergeChunksNodeAndEdgeCypher();
+    String cypher = GraphCypherProvider.buildMergeChunksNodeAndEdgeCypher();
 
     String expectedCypher =
         """
-         MERGE (d:`Document` {document_id: $docId})
+         MERGE (d:`Document` {document_id: $docId, document_key: $docKey})
          WITH d
          UNWIND $batch AS item
          MERGE (c:`DocumentChunk` {chunk_id: item.chunk_id})
@@ -28,8 +28,8 @@ class GraphRepositoryTest {
   }
 
   @Test
-  void shouldGenerateCorrectMergeEntityCypher() {
-    String cypher = GraphRepositoryImpl.buildMergeEntityCypher();
+  void buildMergeEntityCypher_maps_raw_cypher() {
+    String cypher = GraphCypherProvider.buildMergeEntityCypher();
 
     String expectedCypher =
         """
@@ -44,8 +44,8 @@ class GraphRepositoryTest {
   }
 
   @Test
-  void shouldGenerateCorrectEntityEdgeCypher() {
-    String cypher = GraphRepositoryImpl.buildMergeEntityEdgeCypher();
+  void buildMergeEntityEdgeCypher_maps_raw_cypher() {
+    String cypher = GraphCypherProvider.buildMergeEntityEdgeCypher();
 
     String expectedCypher =
         """
@@ -60,8 +60,8 @@ class GraphRepositoryTest {
   }
 
   @Test
-  void shouldGenerateCorrectLinkEdgeCypher() {
-    String cypher = GraphRepositoryImpl.buildLinkChunksCypher();
+  void buildLinkChunksCypher_maps_raw_cypher() {
+    String cypher = GraphCypherProvider.buildLinkChunksCypher();
 
     String expectedCypher =
         """
@@ -80,9 +80,9 @@ class GraphRepositoryTest {
   }
 
   @Test
-  void shouldGenerateCorrectMergeRelationshipCypher() {
+  void buildMergeRelationshipCypher() {
     String relType = "RELATED_TO";
-    String cypher = GraphRepositoryImpl.buildMergeRelationshipCypher(relType);
+    String cypher = GraphCypherProvider.buildMergeRelationshipCypher(relType);
 
     String expectedCypher =
         String.format(

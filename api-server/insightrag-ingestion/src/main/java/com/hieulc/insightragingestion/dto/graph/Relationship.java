@@ -1,7 +1,6 @@
-package com.hieulc.insightragingestion.dto;
+package com.hieulc.insightragingestion.dto.graph;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-
 import java.util.Map;
 import java.util.Set;
 
