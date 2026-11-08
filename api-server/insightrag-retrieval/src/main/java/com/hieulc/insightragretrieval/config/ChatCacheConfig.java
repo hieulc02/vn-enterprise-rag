@@ -6,20 +6,16 @@ import com.hieulc.insightragretrieval.config.properties.GenAiProperties;
 import dev.langchain4j.data.message.ChatMessage;
 import java.time.Duration;
 import java.util.List;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-@RequiredArgsConstructor
 @Slf4j
 public class ChatCacheConfig {
 
-  private final GenAiProperties genAiProperties;
-
-  @Bean
-  public Cache<Object, List<ChatMessage>> cache() {
+  @Bean(name = "chatSessionCache")
+  public Cache<Object, List<ChatMessage>> cache(GenAiProperties genAiProperties) {
     return Caffeine.newBuilder()
         .maximumSize(genAiProperties.memory().maxSession())
         .expireAfterAccess(Duration.ofMinutes(genAiProperties.memory().ttlMinutes()))

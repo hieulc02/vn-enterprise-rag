@@ -31,6 +31,8 @@ import org.springframework.test.util.ReflectionTestUtils;
 @ExtendWith(MockitoExtension.class)
 class ChatPayloadBuilderTest {
 
+  private final String USER_ID = "user-id-test";
+
   @Mock private ModelRegistry modelRegistry;
 
   @Mock private ContextFusionService contextFusionService;
@@ -66,7 +68,7 @@ class ChatPayloadBuilderTest {
     when(contextFusionService.fuse(anyString(), anyInt()))
         .thenReturn(new FusionResult(graphContext, 70));
 
-    PreparedChatPayload payload = chatPayloadBuilder.prepare(request);
+    PreparedChatPayload payload = chatPayloadBuilder.prepare(request, USER_ID);
 
     assertThat(payload).isNotNull();
     assertThat(payload.messages()).hasSize(2);
@@ -96,7 +98,7 @@ class ChatPayloadBuilderTest {
     when(tokenCountEstimator.estimateTokenCountInMessages(anyList())).thenReturn(40);
     when(tokenCountEstimator.estimateTokenCountInText(anyString())).thenReturn(101);
 
-    assertThatThrownBy(() -> chatPayloadBuilder.prepare(request))
+    assertThatThrownBy(() -> chatPayloadBuilder.prepare(request, USER_ID))
         .isInstanceOf(TokenExceededLimitException.class)
         .hasMessage("Query token count (101) exceeds max limit of 100");
   }
@@ -107,9 +109,9 @@ class ChatPayloadBuilderTest {
 
   private String genDummyGraphContext() {
     return """
-    <chunks></chunks>\n
-    <graph_relationships></graph_relationships>\n
-    <graph_entities></graph_entities>\n
+    <chunks></chunks>
+    <graph_relationships></graph_relationships>
+    <graph_entities></graph_entities>
     """;
   }
 }

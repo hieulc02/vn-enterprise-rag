@@ -57,7 +57,7 @@ final class GraphContextFormatter {
               metadata ->
                   String.format(
                       "       <chunk doc_id=\"%s\" page=\"%s\"/>\n",
-                      metadata.documentId(), metadata.pageNumber()))
+                      metadata.documentKey(), metadata.pageNumber()))
           .forEach(context::append);
     }
     context.append("      </source_chunks>\n");
@@ -73,7 +73,7 @@ final class GraphContextFormatter {
                 %s
               </chunk>
             """,
-        chunk.metadata().documentId(), chunk.metadata().pageNumber(), chunk.text());
+        chunk.metadata().documentKey(), chunk.metadata().pageNumber(), chunk.text());
   }
 
   @SuppressWarnings("StringBufferReplaceableByString")

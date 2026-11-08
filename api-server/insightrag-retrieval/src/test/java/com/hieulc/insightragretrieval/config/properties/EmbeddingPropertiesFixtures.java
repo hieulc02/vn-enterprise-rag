@@ -4,6 +4,6 @@ public class EmbeddingPropertiesFixtures {
   private EmbeddingPropertiesFixtures() {}
 
   public static EmbeddingProperties defaultEmbeddingProperties() {
-    return new EmbeddingProperties("http:embedding-service:8081", "mock-model");
+    return new EmbeddingProperties("http:embedding-service:8081", "mock-model", 120);
   }
 }

@@ -52,9 +52,7 @@ class GraphContextFormatterTest {
 
     String expectedPrompt =
         """
-      <connection>
-        <relationship>[source] -[RELATED_TO: edge-desc]-> [target]</relationship>
-      </connection>
+      <connection> [source] -[RELATED_TO: edge-desc]-> [target] </connection>
     """;
     String actualPrompt = GraphContextFormatter.formatRelationshipContext(relationshipContext);
     assertThat(actualPrompt).isEqualToNormalizingWhitespace(expectedPrompt);

@@ -66,7 +66,7 @@ class GraphRepositoryImplIT extends AbstractNeo4jIT {
 
     assertThat(chunkContext.chunkId()).isEqualTo("c1");
     assertThat(chunkContext.text()).isEqualTo("Chunk text is an Object and Entity");
-    assertThat(chunkContext.metadata().documentId()).isEqualTo("test-document");
+    assertThat(chunkContext.metadata().documentKey()).isEqualTo("test-document");
     assertThat(chunkContext.metadata().pageNumber()).isEqualTo(1);
   }
 
@@ -82,7 +82,7 @@ class GraphRepositoryImplIT extends AbstractNeo4jIT {
 
     assertThat(chunkContext.chunkId()).isEqualTo("c1");
     assertThat(chunkContext.text()).isEqualTo("Chunk text is an Object and Entity");
-    assertThat(chunkContext.metadata().documentId()).isEqualTo("test-document");
+    assertThat(chunkContext.metadata().documentKey()).isEqualTo("test-document");
     assertThat(chunkContext.metadata().pageNumber()).isEqualTo(1);
   }
 
@@ -128,7 +128,7 @@ class GraphRepositoryImplIT extends AbstractNeo4jIT {
     DocumentChunkContext chunkContext = nodeContext.sourceChunks().getFirst();
     assertThat(chunkContext.chunkId()).isEqualTo("c1");
     assertThat(chunkContext.text()).isEqualTo("");
-    assertThat(chunkContext.metadata().documentId()).isEqualTo("test-document");
+    assertThat(chunkContext.metadata().documentKey()).isEqualTo("test-document");
     assertThat(chunkContext.metadata().pageNumber()).isEqualTo(1);
   }
 
@@ -175,7 +175,7 @@ class GraphRepositoryImplIT extends AbstractNeo4jIT {
     DocumentChunkContext chunkContext = nodeContext.sourceChunks().getFirst();
     assertThat(chunkContext.chunkId()).isEqualTo("c2");
     assertThat(chunkContext.text()).isEqualTo("");
-    assertThat(chunkContext.metadata().documentId()).isEqualTo("test-document");
+    assertThat(chunkContext.metadata().documentKey()).isEqualTo("test-document");
     assertThat(chunkContext.metadata().pageNumber()).isEqualTo(2);
   }
 

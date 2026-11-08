@@ -28,17 +28,13 @@ public class HistoryEvictionPolicy {
 
     while (tokens > tokenLimit && degradedHistory.size() >= 2) {
       ChatMessage message = degradedHistory.getFirst();
+      ChatMessage removedUser = degradedHistory.removeFirst();
+      tokens -= tokenCountEstimator.estimateTokenCountInMessage(removedUser);
       if (message instanceof UserMessage) {
-        ChatMessage removedUser = degradedHistory.removeFirst();
-        tokens -= tokenCountEstimator.estimateTokenCountInMessage(removedUser);
-
         if (!degradedHistory.isEmpty() && degradedHistory.getFirst() instanceof AiMessage) {
           ChatMessage removeAi = degradedHistory.removeFirst();
           tokens -= tokenCountEstimator.estimateTokenCountInMessage(removeAi);
         }
-      } else {
-        ChatMessage dropped = degradedHistory.removeFirst();
-        tokens -= tokenCountEstimator.estimateTokenCountInMessage(dropped);
       }
     }
     if (tokens > tokenLimit) {

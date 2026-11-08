@@ -31,7 +31,7 @@ class GraphContextMapperTest {
     when(record.get("chunk_id")).thenReturn(Values.value("chunk-id-test"));
     when(record.get("text")).thenReturn(Values.value("chunk-text-test"));
 
-    Map<String, Object> metadataMap = Map.of("document_id", "document-id-test", "page_number", 1);
+    Map<String, Object> metadataMap = Map.of("document_key", "document-id-test", "page_number", 1);
     when(record.get("metadata")).thenReturn(Values.value(metadataMap));
 
     DocumentChunkContext result = graphContextMapper.mapToChunkContext(null, record);
@@ -39,7 +39,7 @@ class GraphContextMapperTest {
     assertThat(result).isNotNull();
     assertThat(result.chunkId()).isEqualTo("chunk-id-test");
     assertThat(result.text()).isEqualTo("chunk-text-test");
-    assertThat(result.metadata().documentId()).isEqualTo("document-id-test");
+    assertThat(result.metadata().documentKey()).isEqualTo("document-id-test");
     assertThat(result.metadata().pageNumber()).isEqualTo(1);
   }
 
@@ -57,7 +57,7 @@ class GraphContextMapperTest {
             "chunk_id",
             "chunk-id-test",
             "metadata",
-            Map.of("document_id", "document-id-test", "page_number", 1));
+            Map.of("document_key", "document-id-test", "page_number", 1));
     when(record.get("source_chunks")).thenReturn(Values.value(List.of(chunkMap)));
 
     Map<String, Object> relatedEntityMap =
@@ -68,7 +68,7 @@ class GraphContextMapperTest {
             "target_id", "neighbor-id",
             "target_title", "neighbor-title",
             "target_labels", List.of("Entity"),
-            "target_props", dummyProps("neighbor-prop"));
+            "target_props", dummyProps());
 
     when(record.get("related_entities")).thenReturn(Values.value(List.of(relatedEntityMap)));
 
@@ -83,7 +83,7 @@ class GraphContextMapperTest {
     DocumentChunkContext chunk = result.sourceChunks().getFirst();
     assertThat(chunk.chunkId()).isEqualTo("chunk-id-test");
     assertThat(chunk.text()).isEmpty();
-    assertThat(chunk.metadata().documentId()).isEqualTo("document-id-test");
+    assertThat(chunk.metadata().documentKey()).isEqualTo("document-id-test");
     assertThat(chunk.metadata().pageNumber()).isEqualTo(1);
 
     assertThat(result.relatedEntities()).hasSize(1);
@@ -127,9 +127,9 @@ class GraphContextMapperTest {
     assertThat(result.targetNode().labels()).containsExactly("Target-Label");
   }
 
-  private Map<String, Object> dummyProps(String value) {
+  private Map<String, Object> dummyProps() {
     Map<String, Object> props = new HashMap<>();
-    props.put("value", value);
+    props.put("value", "neighbor-prop");
     props.put("embedding", null);
     props.put("id", null);
     props.put("title", null);

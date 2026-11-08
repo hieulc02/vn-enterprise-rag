@@ -3,7 +3,6 @@ package com.hieulc.insightragretrieval.config;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.hieulc.insightragretrieval.config.properties.GenAiProperties;
 import java.time.Duration;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
@@ -13,14 +12,11 @@ import org.springframework.context.annotation.Configuration;
 
 @Configuration
 @EnableCaching
-@RequiredArgsConstructor
 @Slf4j
 public class SpringCacheConfig {
 
-  private final GenAiProperties genAiProperties;
-
   @Bean
-  CacheManager cacheManager() {
+  CacheManager cacheManager(GenAiProperties genAiProperties) {
     CaffeineCacheManager cacheManager =
         new CaffeineCacheManager("queryPreparationCache", "queryAnalysisCache");
     cacheManager.setCaffeine(

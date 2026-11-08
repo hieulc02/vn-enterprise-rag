@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -28,14 +29,17 @@ public class ChatController implements ChatApi {
 
   @Override
   @PostMapping(produces = MediaType.APPLICATION_JSON_VALUE)
-  public ResponseEntity<ChatResponseDto> chatSync(@Valid @RequestBody ChatRequestDto chatRequest) {
-    String responseText = chatService.chat(chatRequest);
+  public ResponseEntity<ChatResponseDto> chatSync(
+      @Valid @RequestBody ChatRequestDto chatRequest, Jwt jwt) {
+    String userId = jwt.getSubject();
+    String responseText = chatService.chat(chatRequest, userId);
     return ResponseEntity.ok(new ChatResponseDto(chatRequest.sessionId(), responseText));
   }
 
   @Override
   @PostMapping(path = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-  public SseEmitter chatStream(@Valid @RequestBody ChatRequestDto chatRequest) {
+  public SseEmitter chatStream(@Valid @RequestBody ChatRequestDto chatRequest, Jwt jwt) {
+    String userId = jwt.getSubject();
     SseEmitter sseEmitter = new SseEmitter(120_000L);
 
     sseEmitter.onTimeout(sseEmitter::complete);
@@ -45,6 +49,7 @@ public class ChatController implements ChatApi {
                 "SSE Stream terminated with error for session: {}", chatRequest.sessionId(), e));
     chatService.streamChat(
         chatRequest,
+        userId,
         new ChatStreamCallback() {
           @Override
           public void onResponse(String partialResponse) {

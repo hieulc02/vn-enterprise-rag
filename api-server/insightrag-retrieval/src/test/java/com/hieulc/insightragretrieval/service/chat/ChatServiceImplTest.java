@@ -21,15 +21,20 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class ChatServiceImplTest {
+
+  private final String USER_ID = "user-id-test";
+
   @Mock private ChatPayloadBuilder chatPayloadBuilder;
 
   @Mock private StreamingChatModel streamingChatModel;
   @Mock private ChatModel chatModel;
   @Mock private ChatStreamCallback callback;
   @Mock private ChatMemory chatMemoryMock;
+  @Mock private ApplicationEventPublisher eventPublisher;
   @Captor private ArgumentCaptor<StreamingChatResponseHandler> handlerCaptor;
   @InjectMocks private ChatServiceImpl chatService;
 
@@ -38,13 +43,13 @@ class ChatServiceImplTest {
     var request = createChatRequest();
     var dummyPayload = createChatPayload();
 
-    when(chatPayloadBuilder.prepare(request)).thenReturn(dummyPayload);
+    when(chatPayloadBuilder.prepare(request, USER_ID)).thenReturn(dummyPayload);
 
     AiMessage aiResponse = AiMessage.from("Sync response.");
     ChatResponse chatResponse = ChatResponse.builder().aiMessage(aiResponse).build();
     when(chatModel.chat(any(ChatRequest.class))).thenReturn(chatResponse);
 
-    String response = chatService.chat(request);
+    String response = chatService.chat(request, USER_ID);
 
     assertThat(response).isEqualTo("Sync response.");
     verify(chatMemoryMock).add(any(UserMessage.class));
@@ -56,10 +61,10 @@ class ChatServiceImplTest {
     var request = createChatRequest();
     var dummyPayload = createChatPayload();
 
-    when(chatPayloadBuilder.prepare(request)).thenReturn(dummyPayload);
+    when(chatPayloadBuilder.prepare(request, USER_ID)).thenReturn(dummyPayload);
     when(chatModel.chat(any(ChatRequest.class))).thenThrow(new RuntimeException("LLM failed"));
 
-    assertThatThrownBy(() -> chatService.chat(request))
+    assertThatThrownBy(() -> chatService.chat(request, USER_ID))
         .isInstanceOf(AiContentGenerateException.class)
         .hasMessageContaining("AI processing failed. Please try again");
 
@@ -72,9 +77,9 @@ class ChatServiceImplTest {
     var request = createChatRequest();
     var dummyPayload = createChatPayload();
 
-    when(chatPayloadBuilder.prepare(request)).thenReturn(dummyPayload);
+    when(chatPayloadBuilder.prepare(request, USER_ID)).thenReturn(dummyPayload);
 
-    chatService.streamChat(request, callback);
+    chatService.streamChat(request, USER_ID, callback);
 
     verify(streamingChatModel).chat(any(ChatRequest.class), handlerCaptor.capture());
     StreamingChatResponseHandler responseHandler = handlerCaptor.getValue();
@@ -97,9 +102,9 @@ class ChatServiceImplTest {
     var request = createChatRequest();
     var dummyPayload = createChatPayload();
 
-    when(chatPayloadBuilder.prepare(request)).thenReturn(dummyPayload);
+    when(chatPayloadBuilder.prepare(request, USER_ID)).thenReturn(dummyPayload);
 
-    chatService.streamChat(request, callback);
+    chatService.streamChat(request, USER_ID, callback);
 
     verify(streamingChatModel).chat(any(ChatRequest.class), handlerCaptor.capture());
     StreamingChatResponseHandler responseHandler = handlerCaptor.getValue();
