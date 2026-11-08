@@ -99,7 +99,7 @@ providing grounded answers with exact page-level citations.
   processing before appearing in Neo4j queries.
 
 * **Single-Node Profile Segmentation:** The deployment blueprint is currently tuned for a single-node production host (
-  or split-VM deployment via Docker Compose `--profile` segmentation) with strict `cgroups v2 resource limits.
+  or split-VM deployment via Docker Compose `--profile` segmentation) with strict `cgroups v2` resource limits.
 
 ---
 
@@ -272,7 +272,8 @@ The entire infrastructure is containerized using multi-profile Docker Compose ov
 ### Prerequisites
 
 - **Docker Engine `v25.0.3+`** & **Docker Compose `v24.4.4+`**
-- Configure environment variables by copying `.env.example` to `.env` in `docker/`, `api-server/`, and `doc-worker/`.
+- Configure environment variables by copying `.env.example` to `.env` in `docker/`, `insightrag-core/`, and
+  `insightrag-extractor/`.
 
 ### Launch the Stack
 

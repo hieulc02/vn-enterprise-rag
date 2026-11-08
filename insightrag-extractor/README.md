@@ -1,6 +1,6 @@
-# doc-worker
+# insightrag-extractor
 
-Event-driven Python microservice transforming Vietnamese financial documents into resolved Knowledge Graph entities. 
+Event-driven Python microservice transforming Vietnamese financial documents into resolved Knowledge Graph entities.
 
 ## Quick Start
 
@@ -58,7 +58,7 @@ graph LR
 ## Prerequisites
 
 * **Python:** `>=3.13`
-* **Package Manager:** [uv](https://github.com/astral-sh/uv) 
+* **Package Manager:** [uv](https://github.com/astral-sh/uv)
 * **Infrastructure:** Local or remote instances of Kafka, MinIO (optional)
 
 ## Environment Configuration

@@ -11,7 +11,7 @@ docker/.env
 !**/.env.example
 
 # Backend build files
-api-server/target/
+insightrag-core/target/
 **/target/
 *.class
 *.log

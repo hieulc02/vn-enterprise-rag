@@ -34,7 +34,7 @@ services:
 
   insightrag-worker:
     build:
-      context: ../api-server
+      context: ../insightrag-core
       dockerfile: Dockerfile
       args:
         MODULE_NAME: insightrag-worker
@@ -42,7 +42,7 @@ services:
     container_name: insightrag-worker
     profiles: [ worker ]
     env_file:
-      - ../api-server/.env
+      - ../insightrag-core/.env
     environment:
       - SPRING_PROFILES_ACTIVE=prod
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-db:5432/insightrag_db
@@ -67,13 +67,13 @@ services:
 
   insightrag-extraction:
     build:
-      context: ../doc-worker
+      context: ../insightrag-extractor
       dockerfile: Dockerfile
     image: insightrag-extraction:latest
     container_name: insightrag-extraction
     profiles: [ extraction ]
     env_file:
-      - ../doc-worker/.env
+      - ../insightrag-extractor/.env
     environment:
       - KAFKA_BROKER=broker:29092
       - MINIO_ENDPOINT=minio:9000
@@ -87,7 +87,7 @@ services:
 
   insightrag-ingestion:
     build:
-      context: ../api-server
+      context: ../insightrag-core
       dockerfile: Dockerfile
       args:
         MODULE_NAME: insightrag-ingestion
@@ -95,7 +95,7 @@ services:
     container_name: insightrag-ingestion
     profiles: [ ingestion ]
     env_file:
-      - ../api-server/.env
+      - ../insightrag-core/.env
     environment:
       - SPRING_PROFILES_ACTIVE=prod
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-db:5432/insightrag_db
@@ -116,7 +116,7 @@ services:
 
   insightrag-retrieval:
     build:
-      context: ../api-server
+      context: ../insightrag-core
       dockerfile: Dockerfile
       args:
         MODULE_NAME: insightrag-retrieval
@@ -124,7 +124,7 @@ services:
     container_name: insightrag-retrieval
     profiles: [ retrieval ]
     env_file:
-      - ../api-server/.env
+      - ../insightrag-core/.env
     environment:
       - SPRING_PROFILES_ACTIVE=prod
       - INSIGHTRAG_EMBEDDING_INFINITY_URL=http://infinity-embedding:7997

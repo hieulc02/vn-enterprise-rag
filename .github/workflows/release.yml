@@ -29,19 +29,19 @@ jobs:
         with:
           filters: |
             java_shared:
-              - 'api-server/pom.xml'
-              - 'api-server/Dockerfile'
-              - 'api-server/core-infrastructure
+              - 'insightrag-core/pom.xml'
+              - 'insightrag-core/Dockerfile'
+              - 'insightrag-core/core-infrastructure/**'
               - '.github/actions/docker-build-scan-push/**'
               - '.github/workflows/release.yml'
             worker:
-              - 'api-server/insightrag-worker/**'
+              - 'insightrag-core/insightrag-worker/**'
             ingestion:
-              - 'api-server/insightrag-ingestion/**'
+              - 'insightrag-core/insightrag-ingestion/**'
             retrieval:
-              - 'api-server/insightrag-retrieval/**'
+              - 'insightrag-core/insightrag-retrieval/**'
             python:
-              - 'doc-worker/**'
+              - 'insightrag-extractor/**'
               - '.github/actions/docker-build-scan-push/**'
               - '.github/workflows/release.yml'
       - name: Determine release targets
@@ -57,13 +57,12 @@ jobs:
           if [[ "${{ steps.filter.outputs.java_shared }}" == "true" ]]; then
             echo 'java_matrix=["insightrag-worker","insightrag-ingestion","insightrag-retrieval"]' >> "$GITHUB_OUTPUT"
           else
-            module()
+            modules=()
             [[ "${{ steps.filter.outputs.worker }}" == "true" ]] && modules+=("\"insightrag-worker\"")
             [[ "${{ steps.filter.outputs.ingestion }}" == "true" ]] && modules+=("\"insightrag-ingestion\"")
             [[ "${{ steps.filter.outputs.retrieval }}" == "true" ]] && modules+=("\"insightrag-retrieval\"")
           
-            IFS=,
-            echo "java_matrix=[${modules[*]}]" >> "$GITHUB_OUTPUT"
+            (IFS=,; echo "java_matrix=[${modules[*]}]" >> "$GITHUB_OUTPUT")
           fi
           
           echo "python=${{ steps.filter.outputs.python }}" >> "$GITHUB_OUTPUT"
@@ -71,7 +70,7 @@ jobs:
   release-java-images:
     name: Release (${{ matrix.module }})
     needs: changes
-    if: needs.changes.outputs.java_matrix != '[]
+    if: needs.changes.outputs.java_matrix != '[]'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -83,8 +82,8 @@ jobs:
         uses: ./.github/actions/docker-build-scan-push
         with:
           image-name: ${{ matrix.module }}
-          context: ./api-server
-          dockerfile: ./api-server/Dockerfile
+          context: ./insightrag-core
+          dockerfile: ./insightrag-core/Dockerfile
           build-args: MODULE_NAME=${{ matrix.module }}
           push: "true"
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -100,8 +99,8 @@ jobs:
         uses: ./.github/actions/docker-build-scan-push
         with:
           image-name: insightrag-extraction
-          context: ./doc-worker
-          dockerfile: ./doc-worker/Dockerfile
+          context: ./insightrag-extractor
+          dockerfile: ./insightrag-extractor/Dockerfile
           push: "true"
           github-token: ${{ secrets.GITHUB_TOKEN }}
 

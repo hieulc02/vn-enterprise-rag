@@ -21,9 +21,9 @@ jobs:
     name: Detect File Changes
     runs-on: ubuntu-latest
     outputs:
-      java: ${{ steps.filters.outputs.java }}
-      python: ${{ steps.filters.outputs.python }}
-      docker: ${{ steps.filters.outputs.docker }}
+      java: ${{ steps.filter.outputs.java }}
+      python: ${{ steps.filter.outputs.python }}
+      docker: ${{ steps.filter.outputs.docker }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check modified path
@@ -32,16 +32,16 @@ jobs:
         with:
           filters: |
             java:
-              - 'api-server/**'
+              - 'insightrag-core/**'
               - '.github/**'
             python:
-              - 'doc-worker/**'
+              - 'insightrag-extractor/**'
               - '.github/**'
             docker:
               - 'docker/**'
               - '.github/**'
 
-  verfiy-java:
+  verify-java:
     name: Verify Java
     needs: changes
     if: needs.changes.outputs.java == 'true'
@@ -54,10 +54,10 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
           cache: 'maven'
-          cache-dependency-path: 'api-server/pom.xml'
+          cache-dependency-path: 'insightrag-core/pom.xml'
 
       - name: Execute Maven Verify
-        working-directory: ./api-server
+        working-directory: ./insightrag-core
         run: |
           chmod +x mvnw
           ./mvnw -B -ntp clean verify
@@ -67,8 +67,8 @@ jobs:
         uses: ./.github/actions/docker-build-scan-push
         with:
           image-name: insightrag-retrieval
-          context: ./api-server
-          dockerfile: ./api-server/Dockerfile
+          context: ./insightrag-core
+          dockerfile: ./insightrag-core/Dockerfile
           build-args: MODULE_NAME=insightrag-retrieval
           push: "false"
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -78,16 +78,19 @@ jobs:
     needs: changes
     if: needs.changes.outputs.python == 'true'
     runs-on: ubuntu-latest
+    env:
+      GEN_AI_API_KEY: "ci-dummy-api-key"
+      LLAMA_CLOUD_API_KEY: "ci-dummy-llama-api-key"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install uv and Python
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
-          cache-dependency-glob: "doc-worker/uv.lock"
+          cache-dependency-glob: "insightrag-extractor/uv.lock"
 
       - name: Sync dependencies
-        working-directory: ./doc-worker
+        working-directory: ./insightrag-extractor
         run: |
           uv sync --locked --all-extras --dev
           uv run pytest -v
@@ -97,8 +100,8 @@ jobs:
         uses: ./.github/actions/docker-build-scan-push
         with:
           image-name: insightrag-extraction
-          context: ./doc-worker
-          dockerfile: ./doc-worker/Dockerfile
+          context: ./insightrag-extractor
+          dockerfile: ./insightrag-extractor/Dockerfile
           push: "false"
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -116,14 +119,14 @@ jobs:
         run: shellcheck scripts/*.sh
       - name: Validate Compose Blueprint & Prod Overrides
         run: |
-          touch .env ../api-server/.env ../doc-worker/.env
+          touch .env ../insightrag-core/.env ../insightrag-extractor/.env
           chmod +x manage.sh
           
           ./manage.sh dev all config -q
           
-          POSTGRES_USER=ci POSTGRES_PASSWORD=ci \
+          POSTGRES_USERNAME=ci POSTGRES_PASSWORD=ci \
           DEBEZIUM_DB_USER=ci DEBEZIUM_DB_PASSWORD=ci \
-          RABBITMQ_DEFAULT_USER=ci RABBITMQ_DEFAULT_PASS=ci \
+          RABBITMQ_DEFAULT_USER=ci RABBITMQ_DEFAULT_PASS=ci RABBITMQ_ERLANG_COOKIE=ci \
           MINIO_ROOT_USER=ci MINIO_ROOT_PASSWORD=ci \
           GRAPH_PASSWORD=ci GITHUB_OWNER=ci \
           ./manage.sh prod all config -q

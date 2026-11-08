@@ -32,7 +32,7 @@ runs:
     - name: Extract owner name
       id: owner
       shell: bash
-      run: echo "name=${GITHUB_REPOSITORY_OWNER,,}" >> "GITHUB_OUTPUT"
+      run: echo "name=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
 
     - name: Extract Docker metadata
       id: meta
@@ -62,7 +62,7 @@ runs:
     - name: Run Trivy vulnerability scanner on built image
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
       with:
-        image-ref: ghcr.io/${{ steps.owner.outputs.name }}/${{ inputs.image-name }}:sha-${{ github.sha }}
+        image-ref: local-scan/${{ inputs.image-name }}:latest
         scan-type: 'image'
         format: 'table'
         exit-code: '1'
@@ -80,7 +80,6 @@ runs:
 
     - name: Push verified image to GHCR
       if: inputs.push == 'true'
-      uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
       shell: bash
       run: |
         docker push --all-tags ghcr.io/${{ steps.owner.outputs.name }}/${{ inputs.image-name }}
