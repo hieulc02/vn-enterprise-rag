@@ -23,3 +23,7 @@ class StorageBase(ABC):
     @abstractmethod
     async def exists(self, bucket: str, key: str) -> bool:
         pass
+
+    @abstractmethod
+    async def delete_target(self, bucket: str, target_path: str):
+        pass

@@ -7,8 +7,6 @@ logger = logging.getLogger(__name__)
 def document_page_classify(
     file_path: str, text_threshold: int = 100
 ) -> dict[str, tuple[fitz.Document, dict[int, int]]]:
-    doc = fitz.open(file_path)
-
     digital_doc, scanned_doc = fitz.open(), fitz.open()
     digital_map, scanned_map = {}, {}
 

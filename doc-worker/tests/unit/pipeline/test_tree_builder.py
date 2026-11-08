@@ -389,3 +389,50 @@ def test_build_document_tree_hierarchy_page_buffer():
     assert root_node.children[0].content == ["text_1", "text_2", "text_3"]
     assert root_node.children[1].title == ["H2"]
     assert root_node.children[1].level == 1
+
+
+def test_build_tree_from_parsed_block():
+
+    blocks = [
+        ParsedBlock(
+            original_page=1,
+            page_order=1,
+            block_type="header",
+            content="H1: Intro",
+            metadata={"level": 1},
+        ),
+        ParsedBlock(original_page=1, page_order=2, block_type="text", content="text 1"),
+        ParsedBlock(
+            original_page=1,
+            page_order=3,
+            block_type="table",
+            content=[["row 1"]],
+            metadata={"headers": ["Column 1"]},
+        ),
+        ParsedBlock(original_page=2, page_order=1, block_type="text", content="text 2"),
+        ParsedBlock(
+            original_page=2,
+            page_order=2,
+            block_type="header",
+            content="a: Section",
+            metadata={"level": 2},
+        ),
+    ]
+
+    root = build_document_tree(blocks)
+
+    assert len(root.children) == 1
+
+    h1_node = root.children[0]
+    assert "H1: Intro" in h1_node.title
+    assert "text 1" in h1_node.content
+    assert len(h1_node.children) == 2
+
+    table_node = h1_node.children[0]
+    assert isinstance(table_node, TableNode)
+    assert table_node.headers == ["Column 1"]
+    assert table_node.rows == [["row 1"]]
+    assert "text 2" in table_node.content
+
+    h2_node = h1_node.children[1]
+    assert "a: Section" in h2_node.title

@@ -5,10 +5,11 @@ description = "Python worker for document processing"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "confluent-kafka==2.14.2",
     "docling>=2.110.0",
+    "docling-core[chunking]>=2.86.0",
     "minio",
     "pydantic-settings",
+    "pydantic>=2.13.4",
     "pymupdf",
     "llama-cloud>=2.1",
     "orjson>=3.10,<4.0",
@@ -17,22 +18,51 @@ dependencies = [
     "protobuf>=7.35.1",
     "sentencepiece",
     "numpy>=2.5.1",
-    "pytest>=9.1.1",
     "rapidocr-onnxruntime>=1.4.4",
-    "easyocr>=1.7.2",
-    "rapidfuzz>=3.14.5",
     "aiofiles>=25.1.0",
     "babel>=2.18.0",
     "unidecode>=1.4.0",
+    "pandas>=3.0.3",
     "sentence-transformers>=5.7.0",
-    "faker>=40.28.1",
-    "pytest-asyncio>=1.4.0",
     "aiokafka>=0.14.0",
     "diskcache>=5.6.3",
+    "torch>=2.12.1",
+    "torchvision>=0.27.1",
 ]
+
+[dependency-groups]
+dev = [
+    "deptry>=0.23.0",
+    "faker>=40.28.1",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "testcontainers>=4.15.0",
+]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+torchvision = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.pytest.ini_options]
 pythonpath = [
+  ".",
   "app"
 ]
 testpaths = ["tests"]
+
+
+[tool.deptry]
+known_first_party = [
+    "app", "chunking", "config", "embedding", "extraction",
+    "llm", "messaging", "models", "parsers", "pipeline",
+    "prompts", "storage", "tokenizer", "utils"
+]
+package_module_name_map = { google-genai = "google" }
+
+[tool.deptry.per_rule_ignores]
+DEP002 = ["rapidocr-onnxruntime", "torch", "torchvision"]

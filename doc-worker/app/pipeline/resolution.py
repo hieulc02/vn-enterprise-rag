@@ -3,6 +3,8 @@ import logging
 import uuid
 import zlib
 
+from decimal import Decimal
+
 from collections import defaultdict
 from collections.abc import Iterable
 
@@ -183,7 +185,7 @@ class EntityResolutionPipeline:
         entities = self._process_orphan_entities(entities, connected_entity_ids)
 
         return DocumentGraph(
-            document_id=file_key,
+            document_key=file_key,
             chunks=chunks,
             entities=entities,
             relationships=relationships,
@@ -636,9 +638,15 @@ def _create_cell_entity(
     cell_local_id: str,
     clean_value: Any,
 ) -> tuple[GraphEntity, str]:
-    properties: list[PropertyItem] = [
-        PropertyItem(key="value", value=clean_value),
-    ]
+
+    properties: list[PropertyItem] = []
+
+    if isinstance(clean_value, Decimal):
+        properties.append(PropertyItem(key="value_exact", value=str(clean_value)))
+
+        properties.append(PropertyItem(key="value", value=float(clean_value)))
+    else:
+        properties.append(PropertyItem(key="value", value=clean_value))
 
     labels: list[str] = []
 
@@ -688,12 +696,12 @@ def _process_cells(
     relationships: dict[str, LocalRelationship],
 ):
     for cell in row.cells:
-        clean_value = parse_numeric_value(cell.value)
+        if cell.is_numeric:
+            clean_value = parse_numeric_value(cell.value)
+        else:
+            clean_value = cell.value.strip()
 
-        if not cell.is_numeric:
-            cell.value.strip()
-
-        if not clean_value and not cell.is_numeric and clean_value != 0.0:
+        if not clean_value:
             continue
 
         cell_str = f"{chunk_id}:{cell.column_header}:{row.row_concept}"

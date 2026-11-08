@@ -1,3 +1,11 @@
+import logging
+
+
+from parsers.docling import DoclingParser
+from parsers.docling_handler import docling_handler
+from parsers.llama import LLamaParser
+from parsers.llama_handler import llama_handler
+
 from config.config import AppSettings
 from config.chunker import ChunkerConfig
 
@@ -15,29 +23,31 @@ from storage.base import StorageBase
 
 from embedding.transformer import Embedder
 
+from chunking.sematic import SemanticChunker
+from extraction.schema import SchemaExtractor
+
+logger = logging.getLogger(__name__)
+
 
 def build_registry_pipeline(llm: BaseLLMProvider, settings: AppSettings):
     registry = ParserRegistry()
-
     doc_validator = DocumentValidation(llm, settings.validation)
-
-    from parsers.docling import DoclingParser
-    from parsers.docling_handler import docling_handler
 
     registry.register(
         doc_type="digital",
-        parser=DoclingParser(use_ocr=False),
+        parser=DoclingParser(use_ocr=settings.docling.use_ocr),
         handler=docling_handler(doc_validator),
     )
 
-    from parsers.llama import LLamaParser
-    from parsers.llama_handler import llama_handler
-
-    registry.register(
-        doc_type="scanned",
-        parser=LLamaParser(settings.llama.LLAMA_CLOUD_API_KEY),
-        handler=llama_handler(),
-    )
+    llama_api_key = settings.llama.LLAMA_CLOUD_API_KEY if settings.llama else None
+    if llama_api_key:
+        registry.register(
+            doc_type="scanned",
+            parser=LLamaParser(llama_api_key),
+            handler=llama_handler(),
+        )
+    else:
+        logger.warning("Scanned document support is disable")
 
     return registry
 
@@ -50,17 +60,15 @@ def build_ingestion_pipeline(
     registry: ParserRegistry,
 ):
     chunker_config = ChunkerConfig.from_llm(
-        llm_provider=llm, target_chunk_size=1200, overlap=100
+        llm_provider=llm,
+        target_chunk_size=settings.chunking.target_chunk_size,
+        overlap=settings.chunking.overlap,
     )
-
-    from chunking.sematic import SemanticChunker
 
     tokenizer = get_tokenizer(settings=settings)
     chunker = SemanticChunker(
         config=chunker_config, token_function=tokenizer.num_tokens
     )
-
-    from extraction.schema import SchemaExtractor
 
     extracter = SchemaExtractor(
         llm_provider=llm, storage=storage, config=settings.extraction

@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class ChunkMetadata(BaseModel):
-    document_id: str
+    document_key: str
     page_number: int
 
 
@@ -19,6 +19,6 @@ class DocumentChunk(BaseModel):
     @model_validator(mode="after")
     def generate_chunk_id(self) -> "DocumentChunk":
         if not self.chunk_id:
-            unique_string = f"{self.metadata.document_id}_{self.metadata.page_number}_{self.chunk_index}_{self.text}"
+            unique_string = f"{self.metadata.document_key}_{self.metadata.page_number}_{self.chunk_index}_{self.text}"
             self.chunk_id = hashlib.sha256(unique_string.encode("utf-8")).hexdigest()
         return self

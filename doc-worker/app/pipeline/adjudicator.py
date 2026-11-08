@@ -83,6 +83,10 @@ class EntityAdjudicator:
         logger.info(f"Cache miss for key: {cache_key}. Calling LLM for adjudication.")
         result = await self._llm_adjudicate(content)
         if result is not None:
+            model_result = (
+                EntitiesAdjudicator(**result) if isinstance(result, dict) else result
+            )
             self.cache.set(cache_key, result)
+            return model_result
 
-        return result
+        return None

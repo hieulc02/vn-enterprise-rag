@@ -9,7 +9,7 @@ from app.pipeline.resolution import (
 )
 from app.models.extraction import TableRowDTO, TableExtractionDTO, TableCell
 
-from tests.factories.chunk_factory import create_chunk_graph, create_table_context
+from tests.unit.factories.chunk_factory import create_chunk_graph, create_table_context
 
 
 @dataclass
@@ -106,6 +106,8 @@ def test_extract_table_entities_with_no_tabular_data():
 
 def test_extract_table_entities_parent_child_hierarchy():
 
+    document_title = "financial_statement"
+
     parent_row = TableRowDTO(
         row_concept="parent_row", row_type="FinancialMetric", code="100", cells=[]
     )
@@ -129,7 +131,7 @@ def test_extract_table_entities_parent_child_hierarchy():
         cells=[numeric_cell, non_numeric_cell],
     )
     table_context = create_table_context(
-        document_title="financial_statement",
+        document_title=document_title,
         primary_subject="financial_statement_subject",
     )
     table_extraction = TableExtractionDTO(
@@ -153,12 +155,14 @@ def test_extract_table_entities_parent_child_hierarchy():
     parent_entity = next(
         ent
         for ent in entities
-        if ent.description == _build_row_description(parent_row, table_context)
+        if ent.description
+        == _build_row_description(parent_row, table_context, document_title)
     )
     child_entity = next(
         ent
         for ent in entities
-        if ent.description == _build_row_description(child_row, table_context)
+        if ent.description
+        == _build_row_description(child_row, table_context, document_title)
     )
     numeric_cell_entity = next(
         ent
@@ -213,6 +217,7 @@ def test_extract_table_entities_parent_child_hierarchy():
 def test_extract_table_entities_child_as_property(
     custom_row_type, row_type, expected_prop_key
 ):
+    document_title = "financial_statement"
 
     parent_row = TableRowDTO(
         row_concept="parent_row", row_type="FinancialMetric", code="100", cells=[]
@@ -226,7 +231,7 @@ def test_extract_table_entities_child_as_property(
         cells=[],
     )
     table_context = create_table_context(
-        document_title="financial_statement",
+        document_title=document_title,
         primary_subject="financial_statement_subject",
     )
     table_extraction = TableExtractionDTO(
@@ -247,7 +252,8 @@ def test_extract_table_entities_child_as_property(
     parent_entity = next(
         ent
         for ent in entities
-        if ent.description == _build_row_description(parent_row, table_context)
+        if ent.description
+        == _build_row_description(parent_row, table_context, document_title)
     )
 
     new_prop = next(
@@ -260,6 +266,8 @@ def test_extract_table_entities_child_as_property(
 
 
 def test_extract_table_entities_missing_parent_concept():
+    document_title = "financial_statement"
+
     parent_row = TableRowDTO(
         row_concept="parent_row", row_type="FinancialMetric", code="100", cells=[]
     )
@@ -271,7 +279,7 @@ def test_extract_table_entities_missing_parent_concept():
         cells=[],
     )
     table_context = create_table_context(
-        document_title="financial_statement",
+        document_title=document_title,
         primary_subject="financial_statement_subject",
     )
     table_extraction = TableExtractionDTO(
@@ -293,7 +301,8 @@ def test_extract_table_entities_missing_parent_concept():
     orphan_entity = next(
         ent
         for ent in entities
-        if ent.description == _build_row_description(child_row, table_context)
+        if ent.description
+        == _build_row_description(child_row, table_context, document_title)
     )
 
     orphan_relationships = [

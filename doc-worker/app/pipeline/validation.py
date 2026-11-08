@@ -34,7 +34,7 @@ class DocumentValidation:
 
     def _generate_cache_key(self, prompt: str, item: dict) -> str:
         content_hash = {k: v for k, v in item.items() if k != "id"}
-        string_key = f"{prompt}::{json.dumps(content_hash).decode('utf-8')}"
+        string_key = f"{prompt}::{json.dumps(content_hash, option=json.OPT_SORT_KEYS).decode('utf-8')}"
         return hashlib.sha256(string_key.encode()).hexdigest()
 
     async def _validate_chunk(self, prompt: str, chunk: list[dict]) -> dict:

@@ -7,7 +7,7 @@ import numpy as np
 from unittest.mock import MagicMock, AsyncMock
 from app.pipeline.resolution import EntityResolutionPipeline
 from app.models.adjudicator import EntitiesAdjudicator
-from tests.exceptions.llm_exception import ServiceUnavailableError
+from tests.unit.exceptions.llm_exception import ServiceUnavailableError
 
 
 @pytest.fixture
@@ -20,12 +20,12 @@ def registry():
 
 
 @pytest.fixture
-def embeder():
-    embeder = MagicMock()
-    embeder.aembed = AsyncMock(
+def embedder():
+    embedder = MagicMock()
+    embedder.aembed = AsyncMock(
         return_value=[np.array([1.0, 0.0]), np.array([0.0, 1.0])]
     )
-    return embeder
+    return embedder
 
 
 @pytest.fixture
@@ -36,9 +36,9 @@ def adjudicator():
 
 
 @pytest.fixture
-def pipeline(registry, embeder, adjudicator):
+def pipeline(registry, embedder, adjudicator):
     return EntityResolutionPipeline(
-        registry=registry, embedder=embeder, adjudicator=adjudicator
+        registry=registry, embedder=embedder, adjudicator=adjudicator
     )
 
 
@@ -60,7 +60,7 @@ class TestResolutionPipeline:
 
     async def test_route_entity_groups_respects_thresholds(self, pipeline):
 
-        pipeline._map_entity_props = MagicMock()
+        pipeline._map_entity_props = AsyncMock()
         pipeline._create_entity = MagicMock(return_value="new-uid")
         pipeline._gen_entity_context = MagicMock(return_value="cand-context")
 
@@ -103,7 +103,7 @@ class TestResolutionPipeline:
             )
         }
 
-        llm_tasks, review_items = pipeline._route_entity_groups(
+        llm_tasks, review_items = await pipeline._route_entity_groups(
             group_entities=group_entities,
             chunk_id_map={},
             chunk_texts={},
@@ -131,7 +131,7 @@ class TestResolutionPipeline:
 
     async def test_process_llm_adjudicate_handle_failure_gracefully(self, pipeline):
 
-        pipeline._map_entity_props = MagicMock()
+        pipeline._map_entity_props = AsyncMock()
         pipeline._create_entity = MagicMock(return_value="new-uid")
 
         success_task = asyncio.sleep(

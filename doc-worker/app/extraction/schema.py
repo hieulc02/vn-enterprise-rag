@@ -1,6 +1,8 @@
 import asyncio
 import logging
 
+from pathlib import Path
+
 import orjson as json
 
 from llm.base import BaseLLMProvider
@@ -30,15 +32,15 @@ class SchemaExtractor:
         self.storage = storage
         self.semaphore = asyncio.Semaphore(self.config.max_concurrent)
 
-    def _get_cache_key(self, chunk_id: str):
-        folders = f"extractions/{self.config.version}"
+    def _get_cache_key(self, message_key: str, chunk_id: str):
+        folders = f"{message_key}/intermediate/extractions/{self.config.version}"
         return build_filename_with_prefix_folder(folders, chunk_id)
 
     async def _extract_chunk(
-        self, bucket: str, chunk: DocumentChunk
+        self, bucket: str, message_key: str, chunk: DocumentChunk
     ) -> ChunkGraph | None:
 
-        cache_key = self._get_cache_key(chunk.chunk_id)
+        cache_key = self._get_cache_key(message_key, chunk.chunk_id)
 
         if await self.storage.exists(bucket, cache_key):
             try:
@@ -104,12 +106,14 @@ class SchemaExtractor:
         return None
 
     async def extract_all(
-        self, bucket: str, extract_chunks: list[DocumentChunk]
-    ) -> list[ChunkExtraction]:
+        self, bucket: str, message_key: str, extract_chunks: list[DocumentChunk]
+    ) -> list[ChunkGraph]:
         if not extract_chunks:
             return []
 
-        tasks = [self._extract_chunk(bucket, chunk) for chunk in extract_chunks]
+        tasks = [
+            self._extract_chunk(bucket, message_key, chunk) for chunk in extract_chunks
+        ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         valid_results: list[ChunkGraph] = []
@@ -117,8 +121,8 @@ class SchemaExtractor:
             if isinstance(result, Exception):
                 logger.error(f"Unhandled exception during extraction: {result}")
                 continue
-            elif isinstance(result, ChunkGraph):
-                valid_results.append(result)
+            # elif isinstance(result, ChunkGraph):
+            valid_results.append(result)
 
         failed_num = len(extract_chunks) - len(valid_results)
         if failed_num > 0:
