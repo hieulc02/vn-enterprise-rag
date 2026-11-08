@@ -5,6 +5,8 @@ services:
     profiles: [ ingestion, retrieval ]
     env_file:
       - ../.env
+    networks:
+      - insightrag_net
     volumes:
       - neo4j_data:/data
       - neo4j_conf:/conf
@@ -18,7 +20,13 @@ services:
     ports:
       - "7474:7474"
       - "7687:7687"
-    restart: always
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider localhost:7474 || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
 
   infinity-embedding:
     image: michaelf34/infinity:latest-cpu
@@ -26,11 +34,15 @@ services:
     profiles: [ retrieval ]
     ports:
       - "8081:7997"
+    networks:
+      - insightrag_net
     volumes:
       - ../.local_data/hf_cache:/app/.cache
     environment:
       - HF_HOME=/app/.cache
       - HF_HUB_DISABLE_XET=1
+      - OMP_NUM_THREADS=2
+      - MKL_NUM_THREADS=2
     command:
       - "v2"
       - "--model-id"

@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-KAFKA_BROKER="${KAFKA_BROKER_INTERNAL:-kafka:19092}"
+KAFKA_BROKER="${KAFKA_BROKER_INTERNAL:-broker:29092}"
 
 log_info(){
   echo -e "[INFO] $(date +'%Y-%m-%d %H:%M:%S') - $*"

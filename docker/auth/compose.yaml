@@ -7,9 +7,12 @@ services:
     command: start-dev --import-realm
     environment:
       - KC_DB=postgres
-      - KC_DB_URL=jdbc:postgresql://insightrag-db:5432/keycloak_db
+      - KC_HOSTNAME_URL=http://localhost:9090
+      - KC_DB_URL=jdbc:postgresql://postgres-db:5432/keycloak_db
       - KC_HOSTNAME_STRICT=false
       - KC_HTTP_ENABLED=true
+      - KC_HEALTH_ENABLED=true
+      - KC_HTTP_MANAGEMENT_HEALTH_ENABLED=true
     ports:
       - "9090:8080"
     env_file:
@@ -21,3 +24,9 @@ services:
     depends_on:
       postgres-db:
         condition: service_healthy
+    healthcheck:
+      test: [ 'CMD', 'bash', '-c', "{ printf 'HEAD /health/ready HTTP/1.0\r\n\r\n' >&0; grep 'HTTP/1.0 200'; } 0<>/dev/tcp/localhost/9000" ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 180s

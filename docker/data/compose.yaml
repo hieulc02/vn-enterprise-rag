@@ -3,26 +3,26 @@ services:
   broker:
     image: confluentinc/cp-kafka:8.2.2
     container_name: insightrag-kafka
-    hostname: kafka
-    profiles: [ worker, ingestion ]
+    hostname: broker
+    profiles: [ worker, extraction, ingestion ]
     restart: unless-stopped
     env_file:
       - ../.env
-    ports:
-      - "9092:9092"
     networks:
       - insightrag_net
+    ports:
+      - "9092:9092"
     volumes:
       - kafka_data:/var/lib/kafka/data
     environment:
       KAFKA_NODE_ID: 1
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT'
 
-      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT_HOST://localhost:9092,PLAINTEXT://kafka:19092'
+      KAFKA_ADVERTISED_LISTENERS: 'EXTERNAL://localhost:9092,INTERNAL://broker:29092'
       KAFKA_PROCESS_ROLES: 'broker,controller'
-      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:29093'
-      KAFKA_LISTENERS: 'CONTROLLER://:29093,PLAINTEXT_HOST://:9092,PLAINTEXT://:19092'
-      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@broker:29093'
+      KAFKA_LISTENERS: 'CONTROLLER://:29093,EXTERNAL://:9092,INTERNAL://:29092'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'INTERNAL'
       KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
       CLUSTER_ID: '4L6g3nShT-eMCtK--X86sw'
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
@@ -30,7 +30,6 @@ services:
 
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
 
-      #      KAFKA_HEAP_OPTS: "-Xmx512M -Xms512M"
       KAFKA_HEAP_OPTS: "-Xmx256M -Xms256M"
 
       KAFKA_REQUEST_TIMEOUT_MS: 30000
@@ -64,11 +63,10 @@ services:
     entrypoint: [ "bash", "-c" ]
     command: "/tmp/kafka-topics-init.sh"
 
-
   postgres-db:
     image: pgvector/pgvector:pg16
     container_name: insightrag-db
-    profiles: [ worker, retrieval ]
+    profiles: [ worker, ingestion, retrieval ]
     restart: unless-stopped
     env_file:
       - ../.env
@@ -99,27 +97,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-
-#  debezium-connect:
-#    image: quay.io/debezium/connect:3.4.3.Final
-#    container_name: insightrag-debezium
-#    restart: unless-stopped
-#    ports:
-#      - "8083:8083"
-#    depends_on:
-#      - postgres-db
-#      - kafka
-#    networks:
-#      - insightrag_net
-#    environment:
-#      BOOTSTRAP_SERVERS: 'kafka:19092'
-#      GROUP_ID: 'insightrag-connect-cluster'
-#      CONFIG_STORAGE_TOPIC: 'insightrag-connect-configs'
-#      OFFSET_STORAGE_TOPIC: 'insightrag-connect-offsets'
-#      STATUS_STORAGE_TOPIC: 'insightrag-connect-status'
-#      KEY_CONVERTER: 'org.apache.kafka.connect.json.JsonConverter'
-#      VALUE_CONVERTER: 'org.apache.kafka.connect.json.JsonConverter'
-
 
 volumes:
   db-data:

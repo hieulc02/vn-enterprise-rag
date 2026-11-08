@@ -11,12 +11,135 @@ networks:
   insightrag_net:
     name: insightrag_net
     driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: 1400
 
 services:
   api-gateway:
-    image: alpine:latest
+    image: nginx:1.30.6-alpine
+    profiles: [ worker, extraction, ingestion, retrieval ]
     container_name: insightrag-gateway
-    restart: on-failure
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - insightrag_net
+    depends_on:
+      insightrag-retrieval:
+        condition: service_started
+      keycloak:
+        condition: service_healthy
+
+  insightrag-worker:
+    build:
+      context: ../api-server
+      dockerfile: Dockerfile
+      args:
+        MODULE_NAME: insightrag-worker
+    image: insightrag-worker:1.0.0-final
+    container_name: insightrag-worker
+    profiles: [ worker ]
+    env_file:
+      - ../api-server/.env
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-db:5432/insightrag_db
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=broker:29092
+      - DEBEZIUM_OUTBOX_BOOTSTRAP_SERVERS=broker:29092
+      - DEBEZIUM_OUTBOX_DATABASE_HOSTNAME=postgres-db
+      - DEBEZIUM_OUTBOX_DATABASE_PORT=5432
+      - MINIO_ENDPOINT=http://minio:9000
+    networks:
+      - insightrag_net
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+      broker:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  insightrag-extraction:
+    build:
+      context: ../doc-worker
+      dockerfile: Dockerfile
+    image: insightrag-extraction:latest
+    container_name: insightrag-extraction
+    profiles: [ extraction ]
+    env_file:
+      - ../doc-worker/.env
+    environment:
+      - KAFKA_BROKER=broker:29092
+      - MINIO_ENDPOINT=minio:9000
+    networks:
+      - insightrag_net
+    depends_on:
+      broker:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  insightrag-ingestion:
+    build:
+      context: ../api-server
+      dockerfile: Dockerfile
+      args:
+        MODULE_NAME: insightrag-ingestion
+    image: insightrag-ingestion:1.0.0-rc2
+    container_name: insightrag-ingestion
+    profiles: [ ingestion ]
+    env_file:
+      - ../api-server/.env
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-db:5432/insightrag_db
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=broker:29092
+      - SPRING_NEO4J_URI=bolt://neo4j:7687
+      - MINIO_ENDPOINT=http://minio:9000
+    networks:
+      - insightrag_net
+    depends_on:
+      broker:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      postgres-db:
+        condition: service_healthy
+
+  insightrag-retrieval:
+    build:
+      context: ../api-server
+      dockerfile: Dockerfile
+      args:
+        MODULE_NAME: insightrag-retrieval
+    image: insightrag-retrieval:1.0.0-final
+    container_name: insightrag-retrieval
+    profiles: [ retrieval ]
+    env_file:
+      - ../api-server/.env
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - INSIGHTRAG_EMBEDDING_INFINITY_URL=http://infinity-embedding:7997
+      - SPRING_NEO4J_URI=bolt://neo4j:7687
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://localhost:9090/realms/insightrag
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak:8080/realms/insightrag/protocol/openid-connect/certs
+    networks:
+      - insightrag_net
+    ports:
+      - "8080:8080"
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      infinity-embedding:
+        condition: service_started
+      keycloak:
+        condition: service_healthy
 

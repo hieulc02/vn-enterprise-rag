@@ -24,10 +24,7 @@ services:
   minio:
     image: pgsty/minio
     container_name: insightrag-local-minio
-    profiles: [ worker, ingestion ]
-    #    depends_on:
-    #      rabbitmq:
-    #        condition: service_healthy
+    profiles: [ worker, extraction, ingestion ]
     env_file:
       - ../.env
     ports:
