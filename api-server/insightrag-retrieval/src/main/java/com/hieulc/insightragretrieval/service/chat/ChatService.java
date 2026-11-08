@@ -4,7 +4,7 @@ import com.hieulc.insightragretrieval.dto.chat.ChatRequestDto;
 import jakarta.validation.Valid;
 
 public interface ChatService {
-  String chat(@Valid ChatRequestDto chatRequestDto);
+  String chat(@Valid ChatRequestDto chatRequestDto, String userId);
 
-  void streamChat(@Valid ChatRequestDto chatRequestDto, ChatStreamCallback callback);
+  void streamChat(@Valid ChatRequestDto chatRequestDto, String userId, ChatStreamCallback callback);
 }

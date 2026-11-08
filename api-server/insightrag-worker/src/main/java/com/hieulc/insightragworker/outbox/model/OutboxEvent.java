@@ -1,0 +1,8 @@
+package com.hieulc.insightragworker.outbox.model;
+
+import tools.jackson.databind.PropertyNamingStrategies;
+import tools.jackson.databind.annotation.JsonNaming;
+
+@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+public record OutboxEvent(
+    String eventId, String aggregateType, String aggregateId, String eventType, String data) {}

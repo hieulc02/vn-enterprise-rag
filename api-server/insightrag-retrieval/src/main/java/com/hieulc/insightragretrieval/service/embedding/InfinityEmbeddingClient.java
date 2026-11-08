@@ -15,6 +15,7 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.resilience.annotation.Retryable;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
 @Service
@@ -35,7 +36,7 @@ public class InfinityEmbeddingClient implements EmbeddingModel {
   }
 
   @Override
-  @Retryable(EmbeddingClientException.class)
+  @Retryable(value = {EmbeddingClientException.class, ResourceAccessException.class})
   public Response<Embedding> embed(String text) {
     EmbeddingRequest request = EmbeddingRequest.forText(text, embeddingProperties.model());
     List<float[]> embeddings = getEmbeddings(request);

@@ -158,7 +158,7 @@ class GraphRepositoryImpl implements GraphCustomRepository {
         LIMIT $topK
         RETURN chunk.chunk_id AS chunk_id,
                chunk.text AS text,
-               {document_id: chunk.document_id, page_number: chunk.page_number} AS metadata,
+               {document_key: chunk.document_key, page_number: chunk.page_number} AS metadata,
                wrrf
         ORDER BY wrrf DESC, chunk_id ASC
         """;
@@ -213,7 +213,7 @@ class GraphRepositoryImpl implements GraphCustomRepository {
             LIMIT 3
             RETURN collect({
                 chunk_id: c.chunk_id,
-                metadata: {document_id: c.document_id, page_number: c.page_number}
+                metadata: {document_key: c.document_key, page_number: c.page_number}
             }) AS source_chunks
         }
 

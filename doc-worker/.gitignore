@@ -1,11 +1,13 @@
 # Ide workspace
 .vscode/
 
+# Pytest cache
+.pytest_cache/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
 *$py.class
-
 
 # Environments
 .env
@@ -14,5 +16,5 @@ __pycache__/
 # Distribution / packaging
 .Python
 
-
+#local testing
 cache/

@@ -1,0 +1,107 @@
+name: Release Container Image
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+
+jobs:
+  changes:
+    name: Detect Changed Modules
+    runs-on: ubuntu-latest
+    outputs:
+      java_matrix: ${{ steps.set-matrix.outputs.java_matrix }}
+      python: ${{ steps.set-matrix.outputs.python }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check modified path
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            java_shared:
+              - 'api-server/pom.xml'
+              - 'api-server/Dockerfile'
+              - 'api-server/core-infrastructure
+              - '.github/actions/docker-build-scan-push/**'
+              - '.github/workflows/release.yml'
+            worker:
+              - 'api-server/insightrag-worker/**'
+            ingestion:
+              - 'api-server/insightrag-ingestion/**'
+            retrieval:
+              - 'api-server/insightrag-retrieval/**'
+            python:
+              - 'doc-worker/**'
+              - '.github/actions/docker-build-scan-push/**'
+              - '.github/workflows/release.yml'
+      - name: Determine release targets
+        id: set-matrix
+        run: |
+          # Release all modules on version tag or manual workflow_dispatch
+          if [[ "${{ github.ref_type }}" == "tag" || "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo 'java_matrix=["insightrag-worker","insightrag-ingestion","insightrag-retrieval"]' >> "$GITHUB_OUTPUT"
+            echo 'python=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          
+          if [[ "${{ steps.filter.outputs.java_shared }}" == "true" ]]; then
+            echo 'java_matrix=["insightrag-worker","insightrag-ingestion","insightrag-retrieval"]' >> "$GITHUB_OUTPUT"
+          else
+            module()
+            [[ "${{ steps.filter.outputs.worker }}" == "true" ]] && modules+=("\"insightrag-worker\"")
+            [[ "${{ steps.filter.outputs.ingestion }}" == "true" ]] && modules+=("\"insightrag-ingestion\"")
+            [[ "${{ steps.filter.outputs.retrieval }}" == "true" ]] && modules+=("\"insightrag-retrieval\"")
+          
+            IFS=,
+            echo "java_matrix=[${modules[*]}]" >> "$GITHUB_OUTPUT"
+          fi
+          
+          echo "python=${{ steps.filter.outputs.python }}" >> "$GITHUB_OUTPUT"
+  
+  release-java-images:
+    name: Release (${{ matrix.module }})
+    needs: changes
+    if: needs.changes.outputs.java_matrix != '[]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: ${{ fromJson(needs.changes.outputs.java_matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build, Scan, and Push ${{ matrix.module }}
+        uses: ./.github/actions/docker-build-scan-push
+        with:
+          image-name: ${{ matrix.module }}
+          context: ./api-server
+          dockerfile: ./api-server/Dockerfile
+          build-args: MODULE_NAME=${{ matrix.module }}
+          push: "true"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  release-python-image:
+    name: Release (insightrag-extraction)
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build, Scan, and Push insightrag-extraction
+        uses: ./.github/actions/docker-build-scan-push
+        with:
+          image-name: insightrag-extraction
+          context: ./doc-worker
+          dockerfile: ./doc-worker/Dockerfile
+          push: "true"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+

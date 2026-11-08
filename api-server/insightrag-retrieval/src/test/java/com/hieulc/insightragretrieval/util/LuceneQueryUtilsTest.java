@@ -37,26 +37,27 @@ class LuceneQueryUtilsTest {
   @Test
   void should_default_to_orQuery() {
     String query = LuceneQueryUtils.toOrQuery(List.of("entity", "subject"));
-    assertThat(query).isEqualTo("entity OR subject");
+    assertThat(query).isEqualTo("\"entity\" OR \"subject\"");
   }
 
   private static Stream<Arguments> provideQueryTestCases() {
     return Stream.of(
-        Arguments.of(List.of("entity", "subject"), "OR", "entity OR subject", "Basic Lucene Query"),
+        Arguments.of(
+            List.of("entity", "subject"), "OR", "\"entity\" OR \"subject\"", "Basic Lucene Query"),
         Arguments.of(null, "OR", "", "Null list return empty string"),
         Arguments.of(Collections.emptyList(), "OR", "", "Empty list returns empty string"),
         Arguments.of(
             Arrays.asList(" entity ", "  ", "subject ", null),
             "AND",
-            "entity AND subject",
+            "\"entity\" AND \"subject\"",
             "Trim space and drop null/empty string"),
-        Arguments.of(List.of("C++", "C#"), "OR", "C\\+\\+ OR C#", "Escapes + but leaves #"),
+        Arguments.of(List.of("C++", "C#"), "OR", "\"C\\+\\+\" OR \"C#\"", "Escapes + but leaves #"),
         Arguments.of(
             List.of("entity@gmail.com", "100%"),
             "AND",
-            "entity@gmail.com AND 100%",
+            "\"entity@gmail.com\" AND \"100%\"",
             "Ignores non-Lucene special chars"),
         Arguments.of(
-            List.of("!(){}"), "OR", "\\!\\(\\)\\{\\}", "Escapes brackets and exclamation"));
+            List.of("!(){}"), "OR", "\"\\!\\(\\)\\{\\}\"", "Escapes brackets and exclamation"));
   }
 }

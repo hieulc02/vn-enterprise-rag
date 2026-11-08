@@ -6,7 +6,7 @@ from models.chunk import DocumentChunk
 
 
 class DocumentGraph(BaseModel):
-    document_id: str
+    document_key: str
     chunks: list[DocumentChunk]
     entities: list[Entity]
     relationships: list[Relationship]

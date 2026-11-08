@@ -71,3 +71,14 @@ class LocalStorage(StorageBase):
     async def exists(self, bucket: str, key: str) -> bool:
         file_path = self._get_path(bucket, key)
         return await asyncio.to_thread(file_path.exists)
+
+    async def delete_target(self, bucket: str, target_path: str) -> bool:
+        file_path = self._get_path(bucket, target_path)
+        if not await self.exists(bucket, target_path):
+            return False
+        try:
+            await asyncio.to_thread(file_path.unlink, missing_ok=True)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete local file: {e}")
+            raise

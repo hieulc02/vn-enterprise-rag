@@ -1,14 +1,10 @@
 package com.hieulc.insightragingestion.service.graph;
 
-import com.google.common.collect.Lists;
-import com.hieulc.insightragingestion.dto.DocumentChunk;
-import com.hieulc.insightragingestion.dto.DocumentGraph;
-import com.hieulc.insightragingestion.dto.Entity;
-import com.hieulc.insightragingestion.dto.Relationship;
-import com.hieulc.insightragingestion.repository.GraphCustomRepository;
+import com.hieulc.insightragingestion.dto.graph.*;
+import com.hieulc.insightragingestion.repository.graph.GraphCustomRepository;
+import com.hieulc.insightragingestion.util.CollectionUtils;
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -26,38 +22,49 @@ public class GraphIngestionService {
   private int batchSize;
 
   @Transactional
-  public void ingest(DocumentGraph graph) {
+  public void ingest(String documentId, DocumentGraph graph) {
 
-    String docId = graph.documentId();
-    log.info("Graph ingestion for document: {}", docId);
+    String documentKey = graph.documentKey();
+    log.info("Graph ingestion for document: {}", documentKey);
 
     List<DocumentChunk> chunks = safeList(graph.chunks());
     List<Entity> entities = safeList(graph.entities());
     List<Relationship> relationships = safeList(graph.relationships());
 
     if (!chunks.isEmpty()) {
-      Lists.partition(chunks, batchSize)
-          .forEach(batch -> graphRepository.batchInsertChunks(docId, batch));
-      int linked = graphRepository.linkChunks(docId);
+      CollectionUtils.partition(chunks, batchSize)
+          .forEach(batch -> graphRepository.batchInsertChunks(documentId, documentKey, batch));
+      int linked = graphRepository.linkChunks(documentId);
       if (linked > 0) {
-        log.info("Linked {} chunks ingested for document: {}", linked, docId);
+        log.info("Linked {} chunks ingested for document: {}", linked, documentKey);
       }
     }
 
     if (!entities.isEmpty()) {
-      Lists.partition(entities, batchSize).forEach(graphRepository::batchInsertEntities);
-      log.debug("Ingest {} entities for document: {}", entities.size(), docId);
+      CollectionUtils.partition(entities, batchSize).forEach(graphRepository::batchInsertEntities);
+      log.debug("Ingest {} entities for document: {}", entities.size(), documentKey);
     }
 
     if (!relationships.isEmpty()) {
-      Lists.partition(relationships, batchSize).forEach(graphRepository::batchInsertRelationship);
-      log.debug("Ingest {} relationships for document: {}", relationships.size(), docId);
+      CollectionUtils.partition(relationships, batchSize).forEach(graphRepository::batchInsertRelationship);
+      log.debug("Ingest {} relationships for document: {}", relationships.size(), documentKey);
     }
 
-    log.info("Completed graph ingestion for document: {}", docId);
+    log.info("Completed document graph ingestion for document: {}", documentKey);
+  }
+
+  @Transactional
+  public void deleteDocumentGraph(String documentId) {
+    GraphDeleteSummary summary = graphRepository.deleteDocument(documentId);
+
+    if (summary.wasAlreadyDeleted()) {
+      log.info("Document {} was already deleted", documentId);
+    } else {
+      log.info("Completed document graph deletion for document: {}", documentId);
+    }
   }
 
   private <T> List<T> safeList(List<T> list) {
-    return Optional.ofNullable(list).orElseGet(Collections::emptyList);
+    return list == null ? Collections.emptyList() : list;
   }
 }

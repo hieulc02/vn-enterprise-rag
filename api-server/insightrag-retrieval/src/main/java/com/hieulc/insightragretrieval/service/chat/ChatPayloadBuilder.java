@@ -53,10 +53,11 @@ public class ChatPayloadBuilder {
         5. LANGUAGE PROTOCOL: Mirror the user's query language (default to Vietnamese). Do NOT translate proper nouns, ticker symbols, financial acronyms, or metadata tags in citations.
        """);
 
-  public PreparedChatPayload prepare(ChatRequestDto chatRequest) {
+  public PreparedChatPayload prepare(ChatRequestDto chatRequest, String userId) {
     String query = chatRequest.userQuery();
 
-    ChatMemory memory = loadMemory(chatRequest.sessionId());
+    String secureMemoryId = String.format("%s:%s", userId, chatRequest.sessionId());
+    ChatMemory memory = loadMemory(secureMemoryId);
     List<ChatMessage> history = sanitizeHistory(memory.messages());
 
     TokenBudget budget =
@@ -82,8 +83,8 @@ public class ChatPayloadBuilder {
 
     List<ChatMessage> finalMessages = new ArrayList<>();
     finalMessages.add(systemMessage);
-    finalMessages.add(enrichedPrompt);
     finalMessages.addAll(history);
+    finalMessages.add(enrichedPrompt);
 
     return new PreparedChatPayload(finalMessages, memory, query, chatRequest.sessionId());
   }
@@ -107,10 +108,16 @@ public class ChatPayloadBuilder {
   private UserMessage buildEnrichedPrompt(String query, String graphContext) {
     String prompt =
         String.format(
-            "Here is the retrieved knowledge base data:\n"
-                + "<context>\n%s\n</context>\n\n"
-                + "Based ONLY on the <context> above, answer this question:\n"
-                + "<question>\n%s\n</question>",
+            """
+            Here is the retrieved knowledge base data:
+            <context>
+            %s
+            </context>
+
+            Based ONLY on the <context> above, answer this question:
+            <question>
+            %s
+            </question>""",
             graphContext, query);
     return UserMessage.from(prompt);
   }

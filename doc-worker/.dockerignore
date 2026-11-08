@@ -1,0 +1,22 @@
+#Virtual environments and caches
+.venv
+.pytest_cache
+__pycache__
+.vscode
+/cache
+
+# Git
+.git
+.gitignore
+
+# Sensitive files
+.env
+*.pem
+*.key
+
+# Development and testing files
+tests/
+Makefile
+README.md
+.python-version
+.env.example

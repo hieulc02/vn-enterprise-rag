@@ -1,8 +1,10 @@
 import re
 
 import unicodedata
+from decimal import Decimal
 
-from babel.numbers import parse_decimal
+
+from babel.numbers import parse_decimal, NumberFormatError
 
 
 def clean_string(text: str) -> str:
@@ -12,34 +14,47 @@ def clean_string(text: str) -> str:
     return unicodedata.normalize("NFKC", text)
 
 
-def is_numeric_string(val):
-    try:
-        float(val)
-        return True
-    except ValueError:
-        return False
+def parse_numeric_value(raw_value: str, locale: str = "vi_VN") -> Decimal | None:
+    """
+    Strictly parses a financial string into exact Decimal.
 
+    Return None for valid formats, missing data to prevent silent data
+    corruption in the knowledge graph.
+    """
 
-def parse_numeric_value(raw_value: str, locale: str = "vi_VN") -> float | str:
+    if not isinstance(raw_value, str):
+        return None
 
-    value = raw_value.strip()
+    value = clean_string(raw_value)
 
-    if not value or value == "-":
-        return 0.0
+    if not value or value.lower in ["-", "n/a", "nan", "null"]:
+        return None
 
     is_negative = False
+    # Handles accounting negative formats: "(1000)" or "-1.000"
     if value.startswith("(") and value.endswith(")"):
         is_negative = True
         value = value[1:-1].strip()
-    elif value.startswith("-"):
+    elif value.startswith("-") or value.startswith(
+        "−"
+    ):  # Captures both hyphen and unicode minus
         is_negative = True
+        value = value[1:].strip()
 
-    value = re.sub(r"[^\d\.,]", "", value)
-    if not value:
-        return 0.0
+    # Strips common currency markers
+    value = re.sub(
+        r"^(?:[A-Z]{3}|[$€£₫¥])\s*|\s*(?:[A-Z]{3}|[$€£₫¥])$",
+        "",
+        value,
+        flags=re.IGNORECASE,
+    ).strip()
+
+    # The remaining string must contain only digits, spaces, and separators.
+    if not re.fullmatch(r"[\d.,\s]+", value):
+        return None
 
     try:
-        parsed_float = float(parse_decimal(value, locale=locale))
-        return -parsed_float if is_negative else parsed_float
-    except (ValueError, Exception) as e:
-        return raw_value
+        parsed_decimal = parse_decimal(value, locale=locale)
+        return -parsed_decimal if is_negative else parsed_decimal
+    except (NumberFormatError, ValueError, Exception) as e:
+        return None

@@ -263,7 +263,9 @@ def extract_to_blocks(
 
             if df is not None and not df.empty:
                 columns = df.columns.to_list()
-                clean_columns = [_format_header(column) for column in columns if column]
+                clean_columns = [
+                    _format_header(column) if column else "" for column in columns
+                ]
 
                 linearize_rows = linearize_table(df)
 

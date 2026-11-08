@@ -4,11 +4,8 @@ import static com.hieulc.insightragingestion.factory.GraphTestDataFactory.*;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import com.hieulc.insightragingestion.dto.DocumentChunk;
-import com.hieulc.insightragingestion.dto.DocumentGraph;
-import com.hieulc.insightragingestion.dto.Entity;
-import com.hieulc.insightragingestion.dto.Relationship;
-import com.hieulc.insightragingestion.repository.GraphCustomRepository;
+import com.hieulc.insightragingestion.dto.graph.*;
+import com.hieulc.insightragingestion.repository.graph.GraphCustomRepository;
 import java.util.Collections;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,7 +23,8 @@ class GraphIngestionServiceTest {
 
   @Captor ArgumentCaptor<List<Entity>> entityCaptor;
 
-  private static final String docId = "test-document";
+  private static final String docId = "test-document-id";
+  private static final String docKey = "test-document-key";
   private static final int BATCH_SIZE = 1000;
 
   @BeforeEach
@@ -35,34 +33,34 @@ class GraphIngestionServiceTest {
   }
 
   @Test
-  void shouldPartitionDataAndRunInStrictOrder() {
+  void ingest_partitions_list_and_run_in_strict_order() {
 
     int batchSize = 2500;
 
-    List<DocumentChunk> chunks = generateListChunks(docId, batchSize);
+    List<DocumentChunk> chunks = generateListChunks(docKey, batchSize);
     List<Entity> entities = generateListEntities(batchSize);
     List<Relationship> relationships = generateListRelationships(batchSize);
 
-    DocumentGraph graph = new DocumentGraph(docId, chunks, entities, relationships);
+    DocumentGraph graph = new DocumentGraph(docKey, chunks, entities, relationships);
 
     when(graphRepository.linkChunks(docId)).thenReturn(batchSize);
 
-    service.ingest(graph);
+    service.ingest(docId, graph);
 
-    verify(graphRepository, times(3)).batchInsertChunks(eq(docId), anyList());
+    verify(graphRepository, times(3)).batchInsertChunks(eq(docId), eq(docKey), anyList());
     verify(graphRepository, times(3)).batchInsertEntities(anyList());
     verify(graphRepository, times(3)).batchInsertRelationship(anyList());
     verify(graphRepository, times(1)).linkChunks(docId);
 
     InOrder inOrder = inOrder(graphRepository);
-    inOrder.verify(graphRepository, times(3)).batchInsertChunks(eq(docId), anyList());
+    inOrder.verify(graphRepository, times(3)).batchInsertChunks(eq(docId), eq(docKey), anyList());
     inOrder.verify(graphRepository, times(1)).linkChunks(docId);
     inOrder.verify(graphRepository, times(3)).batchInsertEntities(anyList());
     inOrder.verify(graphRepository, times(3)).batchInsertRelationship(anyList());
   }
 
   @Test
-  void shouldPartitionDataWithAppropriateBatches() {
+  void ingest_partition_list_with_appropriate_batches() {
     int batchSize = 2500;
     DocumentGraph graph =
         new DocumentGraph(
@@ -71,7 +69,7 @@ class GraphIngestionServiceTest {
             generateListEntities(batchSize),
             Collections.emptyList());
 
-    service.ingest(graph);
+    service.ingest(docId, graph);
 
     verify(graphRepository, times(3)).batchInsertEntities(entityCaptor.capture());
 
@@ -82,28 +80,47 @@ class GraphIngestionServiceTest {
   }
 
   @Test
-  void shouldHandleGraphWithNullListSafely() {
-    DocumentGraph graph = new DocumentGraph(docId, null, null, null);
+  void ingest_handle_graph_ingestion_with_null_value_safely() {
+    DocumentGraph graph = new DocumentGraph(docKey, null, null, null);
 
-    service.ingest(graph);
+    service.ingest(docId, graph);
 
-    verify(graphRepository, never()).batchInsertChunks(eq(docId), anyList());
+    verify(graphRepository, never()).batchInsertChunks(eq(docId), eq(docKey), anyList());
     verify(graphRepository, never()).batchInsertEntities(anyList());
     verify(graphRepository, never()).batchInsertRelationship(anyList());
     verify(graphRepository, never()).linkChunks(docId);
   }
 
   @Test
-  void shouldHandleGraphWithEmptyListSafely() {
+  void ingest_handle_graph_ingestion_with_emptyList_safely() {
     DocumentGraph graph =
         new DocumentGraph(
-            docId, Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
+            docKey, Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
 
-    service.ingest(graph);
+    service.ingest(docId, graph);
 
-    verify(graphRepository, never()).batchInsertChunks(eq(docId), anyList());
+    verify(graphRepository, never()).batchInsertChunks(eq(docId), eq(docKey), anyList());
     verify(graphRepository, never()).batchInsertEntities(anyList());
     verify(graphRepository, never()).batchInsertRelationship(anyList());
     verify(graphRepository, never()).linkChunks(docId);
+  }
+
+  @Test
+  void deleteDocumentGraph_delete_complete_document_graph() {
+    when(graphRepository.deleteDocument(docId)).thenReturn(new GraphDeleteSummary(10, 20));
+
+    service.deleteDocumentGraph(docId);
+    verify(graphRepository, times(1)).deleteDocument(docId);
+  }
+
+  @Test
+  void deleteDocumentGraph_delete_with_idempotent() {
+
+    GraphDeleteSummary deleteSummary = new GraphDeleteSummary(0, 0);
+    when(graphRepository.deleteDocument(docId)).thenReturn(deleteSummary);
+
+    service.deleteDocumentGraph(docId);
+    verify(graphRepository, times(1)).deleteDocument(docId);
+    assertThat(deleteSummary.wasAlreadyDeleted()).isTrue();
   }
 }

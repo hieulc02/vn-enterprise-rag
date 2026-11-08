@@ -39,11 +39,20 @@ class IngestionPipeline:
         self.embedder = embedder
         self.storage = storage
 
-    async def ingest(self, file_path: str, bucket: str, file_key: str):
+    async def ingest(
+        self,
+        *,
+        file_path: str,
+        bucket: str,
+        file_key: str,
+        message_key: str,
+        is_update: bool = False,
+    ):
+        chunk_cache_key = build_filename_with_prefix_folder(
+            f"{message_key}/intermediate/chunks", file_key
+        )
 
-        chunk_cache_key = build_filename_with_prefix_folder("chunks", file_key)
-
-        if await self.storage.exists(bucket, chunk_cache_key):
+        if not is_update and await self.storage.exists(bucket, chunk_cache_key):
             logger.info(f"Loading chunks from cache for file key: {file_key}")
 
             try:
@@ -62,10 +71,11 @@ class IngestionPipeline:
                 file_path, bucket, file_key, chunk_cache_key
             )
 
-        extracted_chunks = await self.extracter.extract_all(bucket, chunks)
-
-        doc_extraction_key = build_filename_with_prefix_folder("extractions", file_key)
-        if not await self.storage.exists(bucket, doc_extraction_key):
+        extracted_chunks = await self.extracter.extract_all(bucket, message_key, chunks)
+        doc_extraction_key = build_filename_with_prefix_folder(
+            f"{message_key}/intermediate/extractions", file_key
+        )
+        if is_update or not await self.storage.exists(bucket, doc_extraction_key):
             dumped_extractions = await asyncio.to_thread(
                 lambda: [
                     extraction.model_dump(mode="json")

@@ -1,4 +1,7 @@
+import tempfile
+
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict  # type: ignore
@@ -18,9 +21,11 @@ class ValidationSettings(AppBaseSettings):
     model_config = SettingsConfigDict(env_prefix="VALIDATION_")
 
     max_concurrent: int = Field(default=2, ge=1)
-    chunk_size: int = Field(default=20, ge=1)
+    batch_size: int = Field(default=20, ge=1)
     max_retries: int = Field(default=3, ge=0)
     base_wait_sec: int = Field(default=30, ge=1)
+
+    cached_dir: Path = Path(tempfile.gettempdir()) / "llm_cache"
 
 
 class ExtractionSettings(AppBaseSettings):
@@ -33,6 +38,11 @@ class ExtractionSettings(AppBaseSettings):
     version: str = Field(default="v1.1")
 
 
+class ChunkingSettings(AppBaseSettings):
+    target_chunk_size: int = Field(default=1200)
+    overlap: int = Field(default=100)
+
+
 class GenAISettings(AppBaseSettings):
     GEN_AI_API_KEY: str = Field()
     INGESTION_MODEL_NAME: str = Field(default="gemini-3-flash-preview")
@@ -41,6 +51,10 @@ class GenAISettings(AppBaseSettings):
 
 class LLamaSettings(AppBaseSettings):
     LLAMA_CLOUD_API_KEY: str = Field()
+
+
+class DoclingSettings(AppBaseSettings):
+    use_ocr: bool = Field(default=False)
 
 
 class EmbeddingSettings(AppBaseSettings):
@@ -52,6 +66,7 @@ class KakfaSettings(AppBaseSettings):
     KAFKA_CONSUMER_GROUP: str = Field(default="outbox-group")
     KAFKA_CONSUMER_TOPIC: str = Field(default="rag-cdc-topic")
     KAFKA_PRODUCER_TOPIC: str = Field(default="rag-extracting-topic")
+    KAFKA_PRODUCER_TOPIC_DLQ: str = Field(default="rag-extracting-topic-dlt")
 
 
 class MinIOSettings(AppBaseSettings):
@@ -64,10 +79,12 @@ class MinIOSettings(AppBaseSettings):
 class AppSettings(AppBaseSettings):
     validation: ValidationSettings = Field(default_factory=ValidationSettings)
     extraction: ExtractionSettings = Field(default_factory=ExtractionSettings)
+    chunking: ChunkingSettings = Field(default_factory=ChunkingSettings)
 
     gen_ai: GenAISettings = Field(default_factory=GenAISettings)
 
     llama: LLamaSettings = Field(default_factory=LLamaSettings)
+    docling: DoclingSettings = Field(default_factory=DoclingSettings)
 
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
 

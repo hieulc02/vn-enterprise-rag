@@ -3,6 +3,8 @@ import logging
 import uuid
 import zlib
 
+from decimal import Decimal
+
 from collections import defaultdict
 from collections.abc import Iterable
 
@@ -83,16 +85,19 @@ class EntityResolutionPipeline:
     ) -> str:
         relationship_context: list[str] = []
 
+        if not edge_context:
+            return ""
+
         if source_context:
             relationship_context.append(source_context)
         if edge_context:
             relationship_context.append(edge_context)
-        if target_context:
-            relationship_context.append(target_context)
         if properties:
             relationship_context.extend(
                 value for _, value in properties.items() if isinstance(value, str)
             )
+        if target_context:
+            relationship_context.append(target_context)
 
         return " | ".join(relationship_context)
 
@@ -128,16 +133,6 @@ class EntityResolutionPipeline:
                     else {}
                 )
 
-                source_entity = self.registry.entities.get(global_source)
-                target_entity = self.registry.entities.get(global_target)
-
-                relationship.description = self._gen_relationship_context(
-                    source_entity.title if source_entity else "",
-                    relationship.description if relationship.description else "",
-                    target_entity.title if target_entity else "",
-                    relationship_properties_dict,
-                )
-
                 edge_key = (global_source, global_target, relationship.type)
 
                 if edge_key not in merged_relationships:
@@ -168,6 +163,21 @@ class EntityResolutionPipeline:
                     else:
                         merged_relationship.description = relationship.description
 
+        for relationship in merged_relationships.values():
+            if (
+                relationship.source in self.registry.entities
+                and relationship.target in self.registry.entities
+            ):
+                source_entity = self.registry.entities[relationship.source]
+                target_entity = self.registry.entities[relationship.target]
+
+                relationship.description = self._gen_relationship_context(
+                    source_entity.title if source_entity else "",
+                    relationship.description if relationship.description else "",
+                    target_entity.title if target_entity else "",
+                    relationship.properties,
+                )
+
         relationships = list(merged_relationships.values())
 
         await self._batch_embed_relationships_description(relationships)
@@ -175,7 +185,7 @@ class EntityResolutionPipeline:
         entities = self._process_orphan_entities(entities, connected_entity_ids)
 
         return DocumentGraph(
-            document_id=file_key,
+            document_key=file_key,
             chunks=chunks,
             entities=entities,
             relationships=relationships,
@@ -628,9 +638,15 @@ def _create_cell_entity(
     cell_local_id: str,
     clean_value: Any,
 ) -> tuple[GraphEntity, str]:
-    properties: list[PropertyItem] = [
-        PropertyItem(key="value", value=clean_value),
-    ]
+
+    properties: list[PropertyItem] = []
+
+    if isinstance(clean_value, Decimal):
+        properties.append(PropertyItem(key="value_exact", value=str(clean_value)))
+
+        properties.append(PropertyItem(key="value", value=float(clean_value)))
+    else:
+        properties.append(PropertyItem(key="value", value=clean_value))
 
     labels: list[str] = []
 
@@ -680,12 +696,12 @@ def _process_cells(
     relationships: dict[str, LocalRelationship],
 ):
     for cell in row.cells:
-        clean_value = parse_numeric_value(cell.value)
+        if cell.is_numeric:
+            clean_value = parse_numeric_value(cell.value)
+        else:
+            clean_value = cell.value.strip()
 
-        if not cell.is_numeric:
-            cell.value.strip()
-
-        if not clean_value and not cell.is_numeric and clean_value != 0.0:
+        if not clean_value:
             continue
 
         cell_str = f"{chunk_id}:{cell.column_header}:{row.row_concept}"

@@ -1,4 +1,7 @@
+import os
+import stat
 import asyncio
+import hashlib
 import logging
 from typing import Any
 
@@ -6,6 +9,8 @@ import orjson as json
 
 from llm.base import BaseLLMProvider
 from config.config import ValidationSettings
+
+from diskcache import Cache, JSONDisk
 
 logger = logging.getLogger(__name__)
 
@@ -16,8 +21,23 @@ class DocumentValidation:
         self.llm = llm_provider
         self.config = config
         self.semaphore = asyncio.Semaphore(self.config.max_concurrent)
+        self.batch_size = self.config.batch_size
 
-    async def _validate_chunk(self, prompt: str, chunk: str) -> dict:
+        cache_dir = self.config.cached_dir
+
+        os.makedirs(cache_dir, exist_ok=True)
+        os.chmod(cache_dir, stat.S_IRWXU)
+
+        self.cache = Cache(
+            directory=cache_dir, disk=JSONDisk, eviction_policy="least-recently-used"
+        )
+
+    def _generate_cache_key(self, prompt: str, item: dict) -> str:
+        content_hash = {k: v for k, v in item.items() if k != "id"}
+        string_key = f"{prompt}::{json.dumps(content_hash, option=json.OPT_SORT_KEYS).decode('utf-8')}"
+        return hashlib.sha256(string_key.encode()).hexdigest()
+
+    async def _validate_chunk(self, prompt: str, chunk: list[dict]) -> dict:
         for attempt in range(self.config.max_retries):
             try:
                 async with self.semaphore:
@@ -44,13 +64,37 @@ class DocumentValidation:
         if not validate_data:
             return {}
 
-        tasks = [self._validate_chunk(prompt, chunk) for chunk in validate_data]
-        results = await asyncio.gather(*tasks)
-
         valid_data = {}
+        cache_misses: list[dict] = []
+        cache_item_key_map = {}
 
-        for result in results:
-            if isinstance(result, dict):
-                valid_data.update(result)
+        for item in validate_data:
+            cache_key = self._generate_cache_key(prompt, item)
+            cached_result = self.cache.get(cache_key)
+            if cached_result is not None:
+                valid_data[item["id"]] = cached_result
+            else:
+                cache_misses.append(item)
+                cache_item_key_map[item["id"]] = cache_key
+
+        if cache_misses:
+            logger.info(
+                f"Cache misses for {len(cache_misses)}/{len(validate_data)} items. Validating with LLM..."
+            )
+            chunks = [
+                cache_misses[i : i + self.batch_size]
+                for i in range(0, len(cache_misses), self.batch_size)
+            ]
+            tasks = [self._validate_chunk(prompt, chunk) for chunk in chunks]
+            results = await asyncio.gather(*tasks)
+
+            for result in results:
+                if isinstance(result, dict):
+                    valid_data.update(result)
+
+                    for item_id, is_valid in result.items():
+                        cache_key = cache_item_key_map.get(item_id)
+                        if cache_key:
+                            self.cache.set(cache_key, is_valid)
 
         return valid_data

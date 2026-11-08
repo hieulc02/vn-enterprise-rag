@@ -12,6 +12,8 @@ public record TokenBudget(int maxModelLimit, int systemTokens, int historyTokens
   }
 
   public int availableForContext() {
-    return maxModelLimit - systemTokens - historyTokens - queryTokens;
+    int available = maxModelLimit - systemTokens - historyTokens - queryTokens;
+
+    return Math.max(0, available);
   }
 }

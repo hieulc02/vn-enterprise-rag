@@ -9,11 +9,13 @@
 **/.env
 **/.git
 **/.gitignore
+**/.gitattributes
 **/.project
 **/.settings
 **/.toolstarget
 **/.vs
 **/.vscode
+**/.idea
 **/.next
 **/.cache
 **/*.*proj.user
@@ -23,12 +25,10 @@
 **/docker-compose*
 **/compose*
 **/target
-**/Dockerfile*
 **/node_modules
 **/npm-debug.log
 **/obj
 **/secrets.dev.yaml
 **/values.dev.yaml
 **/vendor
-LICENSE
-README.md
+*.md

@@ -132,6 +132,9 @@ def _build_tree_from_parsed_block(
         elif block.block_type == "text":
             if block.original_page == builder.curr_node.page:
                 builder.add_text(text=block.content)
+            elif block.original_page > builder.curr_node.page:
+                builder.flush_page(builder.curr_node.page)
+                builder.add_text(text=block.content)
             else:
                 builder.buffer_page_text(block.original_page, block.content)
         elif block.block_type == "table":

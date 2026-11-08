@@ -82,10 +82,10 @@ public class ContextFusionServiceImpl implements ContextFusionService {
       throw new InsufficientContextException("No context could be retrieved to answer the query");
     }
 
-    return aggregateAndDeduplicate(chunks, nodes, edges, maxContextToken);
+    return aggregate(chunks, nodes, edges, maxContextToken);
   }
 
-  private FusionResult aggregateAndDeduplicate(
+  private FusionResult aggregate(
       List<DocumentChunkContext> chunks,
       List<DocumentNodeContext> nodes,
       List<DocumentRelationshipContext> edges,

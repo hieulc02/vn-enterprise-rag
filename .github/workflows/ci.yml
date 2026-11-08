@@ -1,0 +1,148 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+
+  changes:
+    name: Detect File Changes
+    runs-on: ubuntu-latest
+    outputs:
+      java: ${{ steps.filters.outputs.java }}
+      python: ${{ steps.filters.outputs.python }}
+      docker: ${{ steps.filters.outputs.docker }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check modified path
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            java:
+              - 'api-server/**'
+              - '.github/**'
+            python:
+              - 'doc-worker/**'
+              - '.github/**'
+            docker:
+              - 'docker/**'
+              - '.github/**'
+
+  verfiy-java:
+    name: Verify Java
+    needs: changes
+    if: needs.changes.outputs.java == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up JDK 21
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'maven'
+          cache-dependency-path: 'api-server/pom.xml'
+
+      - name: Execute Maven Verify
+        working-directory: ./api-server
+        run: |
+          chmod +x mvnw
+          ./mvnw -B -ntp clean verify
+
+      - name: Dry-Run Docker Build and Trivy Scan (PR only)
+        if: github.event_name == 'pull_request'
+        uses: ./.github/actions/docker-build-scan-push
+        with:
+          image-name: insightrag-retrieval
+          context: ./api-server
+          dockerfile: ./api-server/Dockerfile
+          build-args: MODULE_NAME=insightrag-retrieval
+          push: "false"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+  
+  verify-python:
+    name: Verify Python
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "doc-worker/uv.lock"
+
+      - name: Sync dependencies
+        working-directory: ./doc-worker
+        run: |
+          uv sync --locked --all-extras --dev
+          uv run pytest -v
+
+      - name: Dry-Run Docker Build & Trivy Scan (PR Only)
+        if: github.event_name == 'pull_request'
+        uses: ./.github/actions/docker-build-scan-push
+        with:
+          image-name: insightrag-extraction
+          context: ./doc-worker
+          dockerfile: ./doc-worker/Dockerfile
+          push: "false"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  verify-docker:
+    name: Verify Docker Compose & Scripts
+    needs: changes
+    if: needs.changes.outputs.docker == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./docker
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Lint bash scripts with ShellCheck
+        run: shellcheck scripts/*.sh
+      - name: Validate Compose Blueprint & Prod Overrides
+        run: |
+          touch .env ../api-server/.env ../doc-worker/.env
+          chmod +x manage.sh
+          
+          ./manage.sh dev all config -q
+          
+          POSTGRES_USER=ci POSTGRES_PASSWORD=ci \
+          DEBEZIUM_DB_USER=ci DEBEZIUM_DB_PASSWORD=ci \
+          RABBITMQ_DEFAULT_USER=ci RABBITMQ_DEFAULT_PASS=ci \
+          MINIO_ROOT_USER=ci MINIO_ROOT_PASSWORD=ci \
+          GRAPH_PASSWORD=ci GITHUB_OWNER=ci \
+          ./manage.sh prod all config -q
+
+  ci-gate:
+    name: CI Gate
+    if: always()
+    needs: [ verify-java, verify-python, verify-docker ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate upstream job statuses
+        run: |
+          if [[ "${{ needs.verify-java.result }}" == "failure" || \
+                "${{ needs.verify-java.result }}" == "cancelled" || \
+                "${{ needs.verify-python.result }}" == "failure" || \
+                "${{ needs.verify-python.result }}" == "cancelled" || \
+                "${{ needs.verify-docker.result }}" == "failure" || \
+                "${{ needs.verify-docker.result }}" == "cancelled" ]]; then
+            echo "One or more verification jobs failed or were cancelled."
+            exit 1
+          fi
+          echo "All triggered CI checks passed!"

@@ -1,0 +1,107 @@
+services:
+
+  broker:
+    image: confluentinc/cp-kafka:8.2.2
+    container_name: insightrag-kafka
+    hostname: broker
+    profiles: [ worker, extraction, ingestion ]
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    networks:
+      - insightrag_net
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT'
+
+      KAFKA_ADVERTISED_LISTENERS: 'EXTERNAL://localhost:9092,INTERNAL://broker:29092'
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@broker:29093'
+      KAFKA_LISTENERS: 'CONTROLLER://:29093,EXTERNAL://:9092,INTERNAL://:29092'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'INTERNAL'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      CLUSTER_ID: '4L6g3nShT-eMCtK--X86sw'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 3000
+
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+
+      KAFKA_HEAP_OPTS: "-Xmx256M -Xms256M"
+
+      KAFKA_REQUEST_TIMEOUT_MS: 30000
+      KAFKA_CONTROLLER_SOCKET_TIMEOUT_MS: 30000
+
+      KAFKA_BROKER_SESSION_TIMEOUT_MS: 60000
+      KAFKA_CONTROLLER_QUORUM_REQUEST_TIMEOUT_MS: 10000
+
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+
+      KAFKA_SHARE_COORDINATOR_STATE_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_SHARE_COORDINATOR_STATE_TOPIC_MIN_ISR: 1
+    healthcheck:
+      test: [ "CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 > /dev/null 2>&1 || exit 1" ]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  broker-setup:
+    image: confluentinc/cp-kafka:8.2.2
+    profiles: [ worker ]
+    depends_on:
+      broker:
+        condition: service_healthy
+    networks:
+      - insightrag_net
+    volumes:
+      - ../scripts/kafka-topics-init.sh:/tmp/kafka-topics-init.sh
+    entrypoint: [ "bash", "-c" ]
+    command: "/tmp/kafka-topics-init.sh"
+
+  postgres-db:
+    image: pgvector/pgvector:pg16
+    container_name: insightrag-db
+    profiles: [ worker, ingestion, retrieval ]
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    volumes:
+      - ./config/cdc.conf:/etc/postgresql/conf.d/cdc.conf
+      - ./init-db:/docker-entrypoint-initdb.d
+      - db-data:/var/lib/postgresql/data
+    expose:
+      - 5432
+    networks:
+      - insightrag_net
+    ports:
+      - "5432:5432"
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=logical"
+      - "-c"
+      - "max_wal_senders=1"
+      - "-c"
+      - "max_replication_slots=1"
+      - "-c"
+      - "wal_sender_timeout=120000"
+      - "-c"
+      - "shared_buffers=64MB"
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "${POSTGRES_USER:-insightrag}", "-d", "${POSTGRES_DB:-insightrag_db}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  db-data:
+  kafka_data:
+
+
+
+

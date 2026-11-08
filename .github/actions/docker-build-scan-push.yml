@@ -1,0 +1,86 @@
+name: "Docker Build, Scan, and Push"
+description: "Builds an image once with GHA cache, scans with Trivy, and pushes to GHCR"
+inputs:
+  image-name:
+    description: "Name of the Docker image"
+    required: true
+  context:
+    description: "Build context directory"
+    required: true
+  dockerfile:
+    description: "Path to Dockerfile"
+    required: true
+  build-args:
+    description: "Build arguments"
+    required: false
+    default: ""
+  push:
+    description: "Whether to push to GHCR"
+    required: false
+    default: "false"
+  github-token:
+    description: "GitHub token for GHCR authentication"
+    required: false
+    default: ""
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+    - name: Extract owner name
+      id: owner
+      shell: bash
+      run: echo "name=${GITHUB_REPOSITORY_OWNER,,}" >> "GITHUB_OUTPUT"
+
+    - name: Extract Docker metadata
+      id: meta
+      uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+      with:
+        images: ghcr.io/${{ steps.owner.outputs.name }}/${{ inputs.image-name }}
+        tags: |
+          type=sha,prefix=sha-,format=short 
+          type=semver,pattern={{version}}
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build image once and load into Docker daemon
+      uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.dockerfile }}
+        build-args: ${{ inputs.build-args }}
+        push: false
+        load: true
+        tags: |
+          ${{ steps.meta.outputs.tags }}
+          local-scan/${{ inputs.image-name }}:latest
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha,scope=${{ inputs.image-name }}
+        cache-to: type=gha,mode=max,scope=${{ inputs.image-name }}
+
+    - name: Run Trivy vulnerability scanner on built image
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      with:
+        image-ref: ghcr.io/${{ steps.owner.outputs.name }}/${{ inputs.image-name }}:sha-${{ github.sha }}
+        scan-type: 'image'
+        format: 'table'
+        exit-code: '1'
+        ignore-unfixed: true
+        vuln-type: "os,library"
+        severity: 'CRITICAL'
+
+    - name: Log in to GitHub Container Registry
+      if: inputs.push == 'true'
+      uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.github-token }}
+
+    - name: Push verified image to GHCR
+      if: inputs.push == 'true'
+      uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+      shell: bash
+      run: |
+        docker push --all-tags ghcr.io/${{ steps.owner.outputs.name }}/${{ inputs.image-name }}

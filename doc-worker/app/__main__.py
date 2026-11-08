@@ -1,8 +1,6 @@
 import logging
 import asyncio
 
-from functools import partial
-
 from aiokafka import AIOKafkaProducer
 
 from config.config import get_settings
@@ -16,7 +14,7 @@ from pipeline.container import (
 
 from messaging.consumer import AsyncKafkaConsumer
 from storage.storage_factory import get_storage
-from pipeline.orchestrator import process_document
+from pipeline.orchestrator import DocumentOrchestrator
 from embedding.transformer import Embedder
 
 logging.basicConfig(level=logging.INFO)
@@ -49,11 +47,11 @@ async def setup_dependencies():
     )
     entity_resolution = build_merge_pipeline(settings, resolution_llm, embedder)
 
-    consumer = AsyncKafkaConsumer(settings)
     producer = AIOKafkaProducer(bootstrap_servers=settings.kafka.KAFKA_BROKER)
-
-    await consumer.start()
     await producer.start()
+
+    consumer = AsyncKafkaConsumer(settings, producer)
+    await consumer.start()
 
     return settings, ingestion_pipeline, entity_resolution, storage, consumer, producer
 
@@ -65,8 +63,7 @@ async def main():
         await setup_dependencies()
     )
 
-    orchestrator_callback = partial(
-        process_document,
+    orchestrator = DocumentOrchestrator(
         notification_topic=settings.kafka.KAFKA_PRODUCER_TOPIC,
         ingestion=ingestion,
         resolution=resolution,
@@ -75,7 +72,7 @@ async def main():
     )
 
     try:
-        await consumer.consume_messages(orchestrator_callback)
+        await consumer.consume_messages(orchestrator.process_document)
     except Exception as e:
         logger.error(f"Error occurred while consuming messages: {e}")
     finally:

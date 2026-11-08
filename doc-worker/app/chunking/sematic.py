@@ -64,7 +64,7 @@ class SemanticChunker:
             chunks.append(
                 DocumentChunk(
                     text=buffer.current_context + "\n".join(buffer.lines),
-                    metadata=ChunkMetadata(document_id=file_key, page_number=page),
+                    metadata=ChunkMetadata(document_key=file_key, page_number=page),
                     chunk_index=chunk_index,
                 )
             )

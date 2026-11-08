@@ -1,0 +1,261 @@
+name: insightrag
+
+x-prod-logging: &prod-logging
+  driver: "json-file"
+  options:
+    max-size: "50m"
+    max-file: "5"
+
+services:
+
+  # Data Overrides
+
+  broker:
+    ports: !reset [ ]
+    environment:
+      KAFKA_HEAP_OPTS: "-Xmx1G -Xms1G"
+      KAFKA_LISTENERS: 'CONTROLLER://:29093,INTERNAL://:29092'
+      KAFKA_ADVERTISED_LISTENERS: 'INTERNAL://broker:29092'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT'
+    healthcheck:
+      test: [ "CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 > /dev/null 2>&1 || exit 1" ]
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    logging: *prod-logging
+
+  postgres-db:
+    ports: !reset [ ]
+    command: !override
+      - "postgres"
+      - "-c"
+      - "wal_level=logical"
+      - "-c"
+      - "max_wal_senders=5"
+      - "-c"
+      - "max_replication_slots=5"
+      - "-c"
+      - "wal_sender_timeout=120000"
+      - "-c"
+      - "shared_buffers=512MB"
+      - "-c"
+      - "work_mem=16MB"
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G #Total RAM = shared_buffered + (max_connections * work_mem) + OS Page cache + WAL/Proces Overhead
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    logging: *prod-logging
+
+  # Storage Overrides
+
+  rabbitmq:
+    ports: !reset [ ]
+    restart: unless-stopped
+    environment:
+      RABBITMQ_VM_MEMORY_HIGH_WATERMARK: "0.6" #RabbitMQ memory threshold
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:?RABBITMQ_DEFAULT_USER is required}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:?RABBITMQ_DEFAULT_PASS is required}
+      RABBITMQ_ERLANG_COOKIE: ${RABBITMQ_ERLANG_COOKIE:?RABBITMQ_ERLANG_COOKIE is required}
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    logging: *prod-logging
+
+  minio:
+    ports: !override
+      - "127.0.0.1:9001:9001"
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+      MINIO_NOTIFY_AMQP_URL_1: "amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    logging: *prod-logging
+
+  # Graph Overrides
+
+  neo4j:
+    ports: !override
+      - "127.0.0.1:7474:7474"
+      - "127.0.0.1:7687:7687"
+    environment:
+      - NEO4J_AUTH=neo4j/${GRAPH_PASSWORD:?GRAPH_PASSWORD is required}
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_server_memory_pagecache_size=512M
+      - NEO4J_server_memory_heap_initial__size=1G
+      - NEO4J_server_memory_heap_max__size=1G
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2560M
+        reservations:
+          cpus: '0.6'
+          memory: 1536M
+    logging: *prod-logging
+
+  infinity-embedding:
+    ports: !reset [ ]
+    restart: unless-stopped
+    volumes: !override
+      - hf_cache:/app/.cache
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0' # Matches OMP_NUM_THREADS=2 and MKL_NUM_THREADS=2
+          memory: 2G
+        reservations:
+          cpus: '1.0'
+          memory: 1G
+    logging: *prod-logging
+
+  # Auth Overrides
+
+  keycloak:
+    ports: !reset [ ]
+    restart: unless-stopped
+    command: !override [ "start", "--import-realm" ]
+    environment:
+      - KC_DB=postgres
+      - KC_DB_URL=jdbc:postgresql://insightrag-db:5432/keycloak_db
+      - KC_DB_USERNAME=${POSTGRES_USER:?POSTGRES_USER is required}
+      - KC_DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - KC_HTTP_ENABLED=true
+      - KC_HEALTH_ENABLED=true
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 1536M
+        reservations:
+          cpus: '0.5'
+          memory: 768M
+    logging: *prod-logging
+
+  # Application modules overrides
+  
+  insightrag-worker:
+    image: ghcr.io/${GITHUB_OWNER}/insightrag-worker:${IMAGE_TAG:-latest}
+    build: !reset null
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USERNAME:?POSTGRES_USERNAME is required}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - SPRING_RABBITMQ_USERNAME=${RABBITMQ_USERNAME:?RABBITMQ_USERNAME is required}
+      - SPRING_RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
+      - DEBEZIUM_OUTBOX_DATABASE_USER=${DEBEZIUM_DB_USER:?DEBEZIUM_DB_USER is required}
+      - DEBEZIUM_OUTBOX_DATABASE_PASSWORD=${DEBEZIUM_DB_PASSWORD:?DEBEZIUM_DB_PASSWORD is required}
+      - MINIO_CREDENTIALS_USERNAME=${MINIO_USERNAME:?MINIO_USERNAME is required}
+      - MINIO_CREDENTIALS_PASSWORD=${MINIO_PASSWORD:?MINIO_PASSWORD is required}
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 1536M
+        reservations:
+          cpus: '0.5'
+          memory: 768M
+    logging: *prod-logging
+  
+  insightrag-extraction:
+    image: ghcr.io/${GITHUB_OWNER}/insightrag-extraction:${IMAGE_TAG:-latest}
+    build: !reset null
+    restart: unless-stopped
+    environment:
+      - KAFKA_BROKER=broker:29092
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+      - OMP_NUM_THREADS=2
+      - MKL_NUM_THREADS=2
+      - PYTHONUNBUFFERED=1 #flush logs immediately to Docker stdout
+    deploy:
+      resources:
+        limits:
+          cpus: '2.5'
+          memory: 3G
+        reservations:
+          cpus: '1.0'
+          memory: 1G
+    logging: *prod-logging
+
+  insightrag-ingestion:
+    image: ghcr.io/${GITHUB_OWNER}/insightrag-ingestion:${IMAGE_TAG:-latest}
+    build: !reset null
+    restart: unless-stopped
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-db:5432/insightrag_db
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER:?POSTGRES_USER is required}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=broker:29092
+      - SPRING_NEO4J_URI=bolt://neo4j:7687
+      - SPRING_NEO4J_AUTHENTICATION_USERNAME=neo4j
+      - SPRING_NEO4J_AUTHENTICATION_PASSWORD=${GRAPH_PASSWORD:?GRAPH_PASSWORD is required}
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_CREDENTIALS_USERNAME=${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+      - MINIO_CREDENTIALS_PASSWORD=${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 1536M
+        reservations:
+          cpus: '0.5'
+          memory: 768M
+    logging: *prod-logging
+
+  insightrag-retrieval:
+    image: ghcr.io/${GITHUB_OWNER}/insightrag-retrieval:${IMAGE_TAG:-latest}
+    build: !reset null
+    restart: unless-stopped
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - INSIGHTRAG_EMBEDDING_INFINITY_URL=http://infinity-embedding:7997
+      - SPRING_NEO4J_URI=bolt://neo4j:7687
+      - SPRING_NEO4J_AUTHENTICATION_USERNAME=neo4j
+      - SPRING_NEO4J_AUTHENTICATION_PASSWORD=${GRAPH_PASSWORD:?GRAPH_PASSWORD is required}
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=${KEYCLOAK_PUBLIC_URL:-http://localhost:9090}/realms/insightrag
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://keycloak:8080/realms/insightrag/protocol/openid-connect/certs
+    networks:
+      - insightrag_net
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      infinity-embedding:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1536M
+        reservations:
+          cpus: '0.5'
+          memory: 768M
+    logging: *prod-logging
+
+volumes:
+  hf_cache:

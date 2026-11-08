@@ -19,7 +19,7 @@ class GraphContextMapper {
     Value metadata = record.get("metadata");
     DocumentChunkContext.ChunkMetadata chunkMetadata =
         new DocumentChunkContext.ChunkMetadata(
-            metadata.get("document_id").asString(), metadata.get("page_number").asInt());
+            metadata.get("document_key").asString(), metadata.get("page_number").asInt());
 
     return new DocumentChunkContext(
         record.get("chunk_id").asString(), record.get("text").asString(), chunkMetadata);
@@ -46,7 +46,7 @@ class GraphContextMapper {
                     value.get("chunk_id").asString(),
                     "",
                     new DocumentChunkContext.ChunkMetadata(
-                        metadata.get("document_id").asString(),
+                        metadata.get("document_key").asString(),
                         metadata.get("page_number").asInt()));
               });
     }
