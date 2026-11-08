@@ -5,7 +5,7 @@
     <parent>
         <groupId>com.hieulc</groupId>
         <artifactId>insightrag</artifactId>
-        <version>0.0.1-SNAPSHOT</version>
+        <version>0.0.1</version>
         <relativePath>../pom.xml</relativePath><!-- lookup parent from repository -->
     </parent>
     <artifactId>insightrag-retrieval</artifactId>
@@ -18,6 +18,7 @@
         <langchain4j-integration.version>1.20.0-beta30</langchain4j-integration.version>
         <caffeine.version>3.2.4</caffeine.version>
         <springdoc-openapi.version>3.1.1</springdoc-openapi.version>
+        <bucket4j_jdk17-core.version>8.21.0</bucket4j_jdk17-core.version>
     </properties>
     <dependencies>
         <dependency>
@@ -38,15 +39,28 @@
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-neo4j</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-cache</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>com.hieulc</groupId>
@@ -73,7 +87,11 @@
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
             <version>${springdoc-openapi.version}</version>
         </dependency>
-
+        <dependency>
+            <groupId>com.bucket4j</groupId>
+            <artifactId>bucket4j_jdk17-core</artifactId>
+            <version>${bucket4j_jdk17-core.version}</version>
+        </dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -101,12 +119,6 @@
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>com.hieulc</groupId>
-            <artifactId>insightrag-ingestion</artifactId>
-            <scope>test</scope>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
             <groupId>eu.michael-simons.neo4j</groupId>
             <artifactId>neo4j-migrations-spring-boot-starter</artifactId>
             <scope>test</scope>
@@ -120,6 +132,16 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-restclient-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.awaitility</groupId>
+            <artifactId>awaitility</artifactId>
             <scope>test</scope>
         </dependency>
 
